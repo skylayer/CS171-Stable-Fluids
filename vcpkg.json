@@ -1,0 +1,16 @@
+{
+  "name": "rt-stable-fluids",
+  "version": "1.0",
+  "description": "CS171 Final Project",
+  "builtin-baseline": "83972272512ce4ede5fc3b2ba98f6468b179f192",
+  "dependencies": [
+    {
+      "name": "eigen3",
+      "version>=": "3.4.0#3"
+    },
+    {
+      "name": "fmt",
+      "version>=": "10.1.1"
+    }
+  ]
+}
