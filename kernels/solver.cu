@@ -260,12 +260,14 @@ namespace cuda_solver {
         const unsigned y = blockIdx.y * blockDim.y + threadIdx.y;
         const unsigned z = blockIdx.z * blockDim.z + threadIdx.z;
 
-        if (x == 0 || x == CELLS_X - 1)
-            field[idx3d(z, y, x)] = (type == BOUNDARY_X ? -1.0f : 1.0f) * field[idx3d(z, y, adj(x, BOUNDARY_X))];
-        if (y == 0 || y == CELLS_Y - 1)
-            field[idx3d(z, y, x)] = (type == BOUNDARY_Y ? -1.0f : 1.0f) * field[idx3d(z, adj(y, BOUNDARY_Y), x)];
-        if (z == 0 || z == CELLS_Z - 1)
-            field[idx3d(z, y, x)] = (type == BOUNDARY_Z ? -1.0f : 1.0f) * field[idx3d(adj(z, BOUNDARY_Z), y, x)];
+        if (x < CELLS_X && y < CELLS_Y && z < CELLS_Z) {
+            if (x == 0 || x == CELLS_X - 1)
+                field[idx3d(z, y, x)] = (type == BOUNDARY_X ? -1.0f : 1.0f) * field[idx3d(z, y, adj(x, BOUNDARY_X))];
+            if (y == 0 || y == CELLS_Y - 1)
+                field[idx3d(z, y, x)] = (type == BOUNDARY_Y ? -1.0f : 1.0f) * field[idx3d(z, adj(y, BOUNDARY_Y), x)];
+            if (z == 0 || z == CELLS_Z - 1)
+                field[idx3d(z, y, x)] = (type == BOUNDARY_Z ? -1.0f : 1.0f) * field[idx3d(adj(z, BOUNDARY_Z), y, x)];
+        }
     }
 
     // __global__ void set_boundary_edge_kernel(float *field, boundary_type type) {
