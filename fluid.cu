@@ -43,6 +43,10 @@ void FluidCUDA::init(void) {
 
 void FluidCUDA::step(void) {
     cuda_solver::v_step(U1_z, U1_y, U1_x, U0_z, U0_y, U0_x);
+    auto lastErr = cudaGetLastError();
+    if (lastErr != cudaSuccess) {
+        fmt::print(stderr, "Error: {}\n", cudaGetErrorString(lastErr));
+    }
     // for (int i = 0; i < NUM_FLUIDS; i++) {
     //     solver::s_step(S1[i], S0[i], U0_z, U0_y, U0_x);
     // }
