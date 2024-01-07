@@ -32,3 +32,6 @@ target_link_libraries(RtStableFluids PRIVATE
 
 # Set CUDA separate compilation to support device and host code in the same file
 set_target_properties(RtStableFluids PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+
+# Set CUDA PIE
+target_compile_options(RtStableFluids PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler -fPIC>)
