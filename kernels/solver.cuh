@@ -20,7 +20,7 @@ namespace cuda_solver {
 
 
     // block size
-    inline dim3 block_size(8, 8, 8);
+    inline dim3 block_size(8, 8, 16);
     // grid size
     inline dim3 grid_size(CELLS_X / block_size.x + 1, CELLS_Y / block_size.y + 1, CELLS_Z / block_size.z + 1);
 }
