@@ -1,4 +1,5 @@
-#include "Fluid.cuh"
+#include "fluid.cuh"
+#include "fmt/format.h"
 
 void FluidCUDA::swap_grids(void) {
     float *temp;
