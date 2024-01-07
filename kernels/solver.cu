@@ -463,7 +463,7 @@ namespace cuda_solver {
         swap(U0_x, U1_x);
     }
 
-    __host__ void cuda_solver::v_step(float *U1_z, float *U1_y, float *U1_x, float *U0_z, float *U0_y, float *U0_x) {
+    __host__ void v_step(float *U1_z, float *U1_y, float *U1_x, float *U0_z, float *U0_y, float *U0_x) {
         set_boundary(U1_z, BOUNDARY_Z);
         set_boundary(U1_y, BOUNDARY_Y);
         set_boundary(U1_x, BOUNDARY_X);
