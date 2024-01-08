@@ -5,7 +5,6 @@
 #ifndef SOLVER_CUH
 #define SOLVER_CUH
 
-#include "cuda_runtime.h"
 #include "params.h"
 
 namespace cuda_solver {
@@ -17,6 +16,7 @@ namespace cuda_solver {
     };
 
     void v_step(float *U1_z, float *U1_y, float *U1_x, float *U0_z, float *U0_y, float *U0_x);
+    void s_step(float *S1, float *S0, float *U_z, float *U_y, float *U_x);
 
 
     // block size

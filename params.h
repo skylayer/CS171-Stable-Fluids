@@ -2,6 +2,7 @@
 #define PARAMS_H
 
 #include <cassert>
+#include "Eigen/Core"
 
 // relevant systemwide parameters should go here
 
@@ -18,13 +19,13 @@
 #define RAINBOW_HOLD_NSTEPS    20
 
 /* Colors */
-#define RED         {1.0f, 0.0f, 0.0f}
-#define GREEN       {0.0f, 1.0f, 0.0f}
-#define BLUE        {0.0f, 0.0f, 1.0f}
-#define YELLOW      {0.5f, 0.5f, 0.0f}
-#define CYAN        {0.0f, 0.5f, 0.5f}
-#define MAGENTA     {0.5f, 0.0f, 0.5f}
-#define WHITE       {0.33f, 0.33f, 0.33f}
+#define RED         Eigen::Vector3f{1.0f, 0.0f, 0.0f}
+#define GREEN       Eigen::Vector3f{0.0f, 1.0f, 0.0f}
+#define BLUE        Eigen::Vector3f{0.0f, 0.0f, 1.0f}
+#define YELLOW      Eigen::Vector3f{0.5f, 0.5f, 0.0f}
+#define CYAN        Eigen::Vector3f{0.0f, 0.5f, 0.5f}
+#define MAGENTA     Eigen::Vector3f{0.5f, 0.0f, 0.5f}
+#define WHITE       Eigen::Vector3f{0.33f, 0.33f, 0.33f}
 #define ALL_COLORS  {RED, GREEN, BLUE, YELLOW, CYAN, MAGENTA, WHITE}
 
 /* Grid parameters */

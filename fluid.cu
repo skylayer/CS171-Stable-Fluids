@@ -48,9 +48,9 @@ void FluidCUDA::step(void) {
     if (lastErr != cudaSuccess) {
         fmt::print(stderr, "Error: {}\n", cudaGetErrorString(lastErr));
     }
-    // for (int i = 0; i < NUM_FLUIDS; i++) {
-    //     solver::s_step(S1[i], S0[i], U0_z, U0_y, U0_x);
-    // }
+    for (int i = 0; i < NUM_FLUIDS; i++) {
+        cuda_solver::s_step(S1[i], S0[i], U0_z, U0_y, U0_x);
+    }
     cudaDeviceSynchronize();
     swap_grids();
 }

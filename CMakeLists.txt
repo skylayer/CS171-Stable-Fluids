@@ -11,6 +11,7 @@ message(STATUS "Using toolchain file: ${CMAKE_TOOLCHAIN_FILE}")
 # Find required packages
 find_package(fmt CONFIG REQUIRED)
 find_package(VTK CONFIG REQUIRED)
+find_package(Eigen3 CONFIG REQUIRED)
 
 # Add the executable
 add_executable(RtStableFluids
@@ -20,6 +21,9 @@ add_executable(RtStableFluids
         kernels/solver.cu
         fluid.cu
         fluid.cuh
+        kernels/render.cu
+        kernels/utils.cu
+        kernels/utils.cuh
 )
 
 include_directories(${PROJECT_SOURCE_DIR})
@@ -28,6 +32,7 @@ include_directories(${PROJECT_SOURCE_DIR})
 target_link_libraries(RtStableFluids PRIVATE
         fmt::fmt
         VTK::CommonCore VTK::CommonDataModel VTK::IOXML
+        Eigen3::Eigen
 )
 
 # Set CUDA separate compilation to support device and host code in the same file
