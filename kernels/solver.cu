@@ -255,7 +255,7 @@ namespace cuda_solver_single {
 }
 
 namespace cuda_solver {
-    __global__ void set_boundary_face_kernel(volatile float *field, boundary_type type) {
+    __device__ void set_boundary_face(volatile float *field, boundary_type type) {
         const unsigned x = blockIdx.x * blockDim.x + threadIdx.x;
         const unsigned y = blockIdx.y * blockDim.y + threadIdx.y;
         const unsigned z = blockIdx.z * blockDim.z + threadIdx.z;
@@ -270,6 +270,8 @@ namespace cuda_solver {
         }
     }
 
+    __global__ void set_boundary_face_kernel(volatile float *field, boundary_type type) { set_boundary_face(field, type); }
+
     // __global__ void set_boundary_edge_kernel(float *field, boundary_type type) {
     //     const unsigned x = blockIdx.x * blockDim.x + threadIdx.x;
     //     const unsigned y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -283,7 +285,7 @@ namespace cuda_solver {
     //         field[idx3d(z, y, x)] = (field[idx3d(z, y, adj(x))] + field[idx3d(z, adj(y), x)]) / 2;
     // }
 
-    __global__ void lin_solve_kernel(volatile float *S1, const float *S0, const float a, const float b) {
+    __global__ void lin_solve_kernel(volatile float *S1, const float *S0, const float a, const float b, const boundary_type type) {
         const unsigned x = blockIdx.x * blockDim.x + threadIdx.x;
         const unsigned y = blockIdx.y * blockDim.y + threadIdx.y;
         const unsigned z = blockIdx.z * blockDim.z + threadIdx.z;
@@ -297,6 +299,8 @@ namespace cuda_solver {
 
             // cooperative_groups::this_grid().sync();
         }
+
+        set_boundary_face(S1, type);
     }
 
     __device__ float lin_interp(float3 pos, const float *field) {
@@ -330,7 +334,7 @@ namespace cuda_solver {
         return (1.0f - zdiff) * ff + zdiff * fb;
     }
 
-    __global__ void transport_kernel(float *S1, const float *S0, const float *U_z, const float *U_y, const float *U_x) {
+    __global__ void transport_kernel(float *S1, const float *S0, const float *U_z, const float *U_y, const float *U_x, const boundary_type type) {
         const unsigned x = blockIdx.x * blockDim.x + threadIdx.x;
         const unsigned y = blockIdx.y * blockDim.y + threadIdx.y;
         const unsigned z = blockIdx.z * blockDim.z + threadIdx.z;
@@ -346,6 +350,8 @@ namespace cuda_solver {
 
             S1[idx3d(z, y, x)] = lin_interp({x0, y0, z0}, S0);
         }
+
+        set_boundary_face(S1, type);
     }
 
     template <bool negate>
@@ -362,6 +368,8 @@ namespace cuda_solver {
 
             div[idx3d(z, y, x)] /= negate ? -2.0f : 2.0f;
         }
+
+        set_boundary_face(div, BOUNDARY_SCALAR);
     }
 
     __global__ void project_kernel_(float *U1_z, float *U1_y, float *U1_x, const float *U0_z, const float *U0_y, const float *U0_x, const float *pressure) {
@@ -374,6 +382,10 @@ namespace cuda_solver {
             U1_y[idx3d(z, y, x)] = U0_y[idx3d(z, y, x)] - (pressure[idx3d(z, y + 1, x)] - pressure[idx3d(z, y - 1, x)]) * CELLS_Y / 2.0f;
             U1_x[idx3d(z, y, x)] = U0_x[idx3d(z, y, x)] - (pressure[idx3d(z, y, x + 1)] - pressure[idx3d(z, y, x - 1)]) * CELLS_X / 2.0f;
         }
+
+        set_boundary_face(U1_z, BOUNDARY_Z);
+        set_boundary_face(U1_y, BOUNDARY_Y);
+        set_boundary_face(U1_x, BOUNDARY_X);
     }
 
     __global__ void reflect_kernel(float *U1_z, float *U1_y, float *U1_x, const float *U0_z, const float *U0_y, const float *U0_x) {
@@ -392,17 +404,17 @@ namespace cuda_solver {
         }
     }
 
-    __host__ void lin_solve(float *S1, const float *S0, const float a, const float b) {
+    __host__ void lin_solve(float *S1, const float *S0, const float a, const float b, const boundary_type type) {
         // kernel
         for (int iter = 0; iter < NUM_ITER; ++iter)
-            lin_solve_kernel<<<grid_size, block_size>>>(S1, S0, a, b);
+            lin_solve_kernel<<<grid_size, block_size>>>(S1, S0, a, b, type);
     }
 
     __host__ void diffuse(float *S1, const float *S0, boundary_type type) {
         constexpr float a = DT * VISCOSITY * CELLS_X * CELLS_X;
         constexpr float b = 1 + 6 * a;
 
-        lin_solve(S1, S0, a, b);
+        lin_solve(S1, S0, a, b, type);
     }
 
     __host__ void set_boundary(float *field, boundary_type type) {
@@ -410,9 +422,9 @@ namespace cuda_solver {
         set_boundary_face_kernel<<<grid_size, block_size>>>(field, type);
     }
 
-    __host__ void transport(float *S1, const float *S0, const float *U_z, const float *U_y, const float *U_x) {
+    __host__ void transport(float *S1, const float *S0, const float *U_z, const float *U_y, const float *U_x, const boundary_type type) {
         // kernel
-        transport_kernel<<<grid_size, block_size>>>(S1, S0, U_z, U_y, U_x);
+        transport_kernel<<<grid_size, block_size>>>(S1, S0, U_z, U_y, U_x, type);
     }
 
     template <bool negate>
@@ -429,26 +441,16 @@ namespace cuda_solver {
         }
 
         divergence<true>(div, U0_z, U0_y, U0_x);
-        cudaDeviceSynchronize();
-
-        set_boundary(div, BOUNDARY_SCALAR);
-        cudaDeviceSynchronize();
+        //        cudaDeviceSynchronize();
 
         constexpr float a = CELLS_X * CELLS_Y;
         constexpr float b = 6.0f * a;
-        lin_solve(pressure, div, a, b);
-        cudaDeviceSynchronize();
-
-        set_boundary(pressure, BOUNDARY_SCALAR);
-        cudaDeviceSynchronize();
+        lin_solve(pressure, div, a, b, BOUNDARY_SCALAR);
+        //        cudaDeviceSynchronize();
 
         project_kernel_<<<grid_size, block_size>>>(U1_z, U1_y, U1_x, U0_z, U0_y, U0_x, pressure);
-        cudaDeviceSynchronize();
+        //        cudaDeviceSynchronize();
 
-        set_boundary(U1_z, BOUNDARY_Z);
-        set_boundary(U1_y, BOUNDARY_Y);
-        set_boundary(U1_x, BOUNDARY_X);
-        cudaDeviceSynchronize();
     }
 
     __host__ void reflect(float *U1_z, float *U1_y, float *U1_x, const float *U0_z, const float *U0_y, const float *U0_x) {
@@ -472,9 +474,9 @@ namespace cuda_solver {
         swap_workspace(U0_z, U0_y, U0_x, U1_z, U1_y, U1_x);
         // cudaDeviceSynchronize();
 
-        transport(U1_z, U0_z, U0_z, U0_y, U0_x);
-        transport(U1_y, U0_y, U0_z, U0_y, U0_x);
-        transport(U1_x, U0_x, U0_z, U0_y, U0_x);
+        transport(U1_z, U0_z, U0_z, U0_y, U0_x, BOUNDARY_Z);
+        transport(U1_y, U0_y, U0_z, U0_y, U0_x, BOUNDARY_Y);
+        transport(U1_x, U0_x, U0_z, U0_y, U0_x, BOUNDARY_X);
         swap_workspace(U0_z, U0_y, U0_x, U1_z, U1_y, U1_x);
         // cudaDeviceSynchronize();
 
@@ -488,9 +490,9 @@ namespace cuda_solver {
         swap_workspace(U0_z, U0_y, U0_x, U1_z, U1_y, U1_x);
         // cudaDeviceSynchronize();
 
-        transport(U1_z, U0_z, U0_z, U0_y, U0_x);
-        transport(U1_y, U0_y, U0_z, U0_y, U0_x);
-        transport(U1_x, U0_x, U0_z, U0_y, U0_x);
+        transport(U1_z, U0_z, U0_z, U0_y, U0_x, BOUNDARY_Z);
+        transport(U1_y, U0_y, U0_z, U0_y, U0_x, BOUNDARY_Y);
+        transport(U1_x, U0_x, U0_z, U0_y, U0_x, BOUNDARY_X);
         swap_workspace(U0_z, U0_y, U0_x, U1_z, U1_y, U1_x);
         // cudaDeviceSynchronize();
 
