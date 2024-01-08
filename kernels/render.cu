@@ -6,80 +6,96 @@
 #include "utils.cuh"
 
 
-__device__ bool intersect(const Eigen::Vector3f &pos, const Eigen::Vector3f &dir, Eigen::Vector3f &hit) {
-    const Eigen::Vector3f min      = Eigen::Vector3f(0, 0, 0);
-    const Eigen::Vector3f max      = Eigen::Vector3f(1, 1, 1);
-    const Eigen::Vector3f inv_dir  = Eigen::Vector3f(1, 1, 1).cwiseQuotient(dir);
-    const Eigen::Vector3f t0s      = (min - pos).cwiseProduct(inv_dir);
-    const Eigen::Vector3f t1s      = (max - pos).cwiseProduct(inv_dir);
-    const Eigen::Vector3f tsmaller = t0s.cwiseMin(t1s);
-    const Eigen::Vector3f tbigger  = t0s.cwiseMax(t1s);
-    const float           tmin     = tsmaller.maxCoeff();
-    const float           tmax     = tbigger.minCoeff();
+__device__ bool intersect(const float pos[3], const float dir[3], float &t_in, float &t_out) {
+    float dir_frac_x = (dir[0] == 0.0) ? 1.0e32 : 1.0f / dir[0];
+    float dir_frac_y = (dir[1] == 0.0) ? 1.0e32 : 1.0f / dir[1];
+    float dir_frac_z = (dir[2] == 0.0) ? 1.0e32 : 1.0f / dir[2];
 
-    if (tmin > tmax) {
+    const float tx1 = (0 - pos[0]) * dir_frac_x;
+    const float tx2 = (1 - pos[0]) * dir_frac_x;
+    const float ty1 = (0 - pos[1]) * dir_frac_y;
+    const float ty2 = (1 - pos[1]) * dir_frac_y;
+    const float tz1 = (0 - pos[2]) * dir_frac_z;
+    const float tz2 = (1 - pos[2]) * dir_frac_z;
+
+    t_in  = max(max(min(tx1, tx2), min(ty1, ty2)), min(tz1, tz2));
+    t_out = min(min(max(tx1, tx2), max(ty1, ty2)), max(tz1, tz2));
+
+    /* When t_out < 0 and the ray is intersecting with AABB, the whole AABB is
+     * behind us */
+    if (t_out < 0) {
         return false;
     }
 
-    hit = pos + tmin * dir;
-    return true;
+    return t_out >= t_in;
 }
 
 
-__device__ float density(const float *field, const Eigen::Vector3f &pos) {
-    if (pos.x() < 0 || pos.x() > 1 || pos.y() < 0 || pos.y() > 1 || pos.z() < 0 || pos.z() > 1) {
+__device__ float density(const float *field, const float pos[3]) {
+    if (pos[0] < 0 || pos[0] > 1 || pos[1] < 0 || pos[1] > 1 || pos[2] < 0 || pos[2] > 1) {
         return 0;
     }
 
-    auto coord = (pos.cwiseProduct(Eigen::Vector3f(CELLS_X - 2, CELLS_Y - 2, CELLS_Z - 2)) + Eigen::Vector3f::Constant(1)).eval();
-    return lin_interp({coord.x(), coord.y(), coord.z()}, field);
+    return lin_interp({pos[0] * (CELLS_X - 2) + 1, pos[1] * (CELLS_Y - 2) + 1, pos[2] * (CELLS_Z - 2) + 1}, field);
 }
 
-__global__ void density_renderer(const Eigen::Matrix3f &view, const Eigen::Vector3f &pos, const float focal, const float **field, float *output) {
+__global__ void density_renderer(const float view[3][3], const float origin[3], const float focal, float **field, float *output) {
     const unsigned x = blockIdx.x * blockDim.x + threadIdx.x;
     const unsigned y = blockIdx.y * blockDim.y + threadIdx.y;
 
-    const Eigen::Vector3f colors[7] = ALL_COLORS;
+    const float colors[7][3] = ALL_COLORS;
 
     if (x < WINDOW_WIDTH && y < WINDOW_HEIGHT) {
-        const auto dir = (view * Eigen::Vector3f(x - WINDOW_WIDTH / 2.0f, y - WINDOW_HEIGHT / 2.0f, -focal)).normalized();
-        if (Eigen::Vector3f hit; intersect(pos, dir, hit)) {
-            float           accumlatedOpacity = 0;
-            Eigen::Vector3f color             = Eigen::Vector3f::Zero();
-            float           step              = 0.01;
-            int             maxIter           = 1000;
+        // Reset frame buffer
+        output[3 * (y * WINDOW_WIDTH + x) + 0] = 0;
+        output[3 * (y * WINDOW_WIDTH + x) + 1] = 0;
+        output[3 * (y * WINDOW_WIDTH + x) + 2] = 0;
 
-            while (accumlatedOpacity < 1 && maxIter--) {
-                float maxDensity = 0;
-                for (int i = 0; i < NUM_FLUIDS; i++) {
-                    const float d = density(field[i], hit);
-                    maxDensity    = fmaxf(maxDensity, d);
+        // Local coordinate (x, y, -focal) to world coordinate
+        float dir[3];
+        dir[0] = view[0][0] * (x - WINDOW_WIDTH / 2.0f) + view[1][0] * (y - WINDOW_HEIGHT / 2.0f) + view[2][0] * (-focal);
+        dir[1] = view[0][1] * (x - WINDOW_WIDTH / 2.0f) + view[1][1] * (y - WINDOW_HEIGHT / 2.0f) + view[2][1] * (-focal);
+        dir[2] = view[0][2] * (x - WINDOW_WIDTH / 2.0f) + view[1][2] * (y - WINDOW_HEIGHT / 2.0f) + view[2][2] * (-focal);
 
+        const float norm = sqrtf(dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]);
+        dir[0] /= norm;
+        dir[1] /= norm;
+        dir[2] /= norm;
+
+        if (float t_in, t_out; intersect(origin, dir, t_in, t_out)) {
+            const int SampleNum = 1000;
+
+            float step = (t_out - t_in) / SampleNum;
+
+            float accumlatedOpacity = 0;
+            float color[3]          = {0, 0, 0};
+
+            for (float t = t_in; t < t_out; t += step) {
+                float point[3] = {origin[0] + t * dir[0], origin[1] + t * dir[1], origin[2] + t * dir[2]};
+                for (int fluidId = 0; fluidId < NUM_FLUIDS; fluidId++) {
+                    float d = density(field[fluidId], point);
                     if (d > 0) {
-                        const float opacity = 1 - exp(-d * step);
-                        const float weight  = opacity * (1 - accumlatedOpacity);
+                        float opacity = 1 - exp(-d * step * ALPHA_OPTION);
+                        float weight  = opacity * (1 - accumlatedOpacity);
 
-                        color += weight * colors[i];
+                        color[0] += weight * colors[fluidId][0];
+                        color[1] += weight * colors[fluidId][1];
+                        color[2] += weight * colors[fluidId][2];
                         accumlatedOpacity += weight;
                     }
                 }
-
-                hit += step * dir;
-
-                if (hit.x() < 0 || hit.x() > 1 || hit.y() < 0 || hit.y() > 1 || hit.z() < 0 || hit.z() > 1) {
-                    break;
-                }
             }
 
-            output[3 * (y * WINDOW_WIDTH + x) + 0] = color.x();
-            output[3 * (y * WINDOW_WIDTH + x) + 1] = color.y();
-            output[3 * (y * WINDOW_WIDTH + x) + 2] = color.z();
+            output[3 * (y * WINDOW_WIDTH + x) + 0] = color[0];
+            output[3 * (y * WINDOW_WIDTH + x) + 1] = color[1];
+            output[3 * (y * WINDOW_WIDTH + x) + 2] = color[2];
         }
     }
 }
 
-__host__ void render_density(const Eigen::Matrix3f &view, const Eigen::Vector3f &pos, const float focal, const float **field, float3 *output) {
-    const dim3 block_size(32, 32);
+
+__host__ void render_density(const float view[3][3], const float pos[3], const float focal, float **field, float *output) {
+    const dim3 block_size(16, 16);
     const dim3 grid_size(WINDOW_WIDTH / block_size.x + 1, WINDOW_HEIGHT / block_size.y + 1);
 
     density_renderer<<<grid_size, block_size>>>(view, pos, focal, field, output);

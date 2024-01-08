@@ -88,7 +88,7 @@ int main() {
 
         fluid.render();
 
-        std::vector<unsigned char> density(WINDOW_WIDTH * WINDOW_HEIGHT * 3);
+        std::vector<unsigned char> density;
         density.reserve(WINDOW_WIDTH * WINDOW_HEIGHT * 3);
 
         for (int pixelId = 0; pixelId < WINDOW_WIDTH * WINDOW_HEIGHT * 3; pixelId++) {

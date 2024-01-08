@@ -44,7 +44,24 @@ void FluidCUDA::init(void) {
         cudaMemset(S1[i], 0, num_cells * sizeof(float));
     }
 
-    cudaMalloc(&render_buffer, 3 * WINDOW_WIDTH * WINDOW_HEIGHT * sizeof(float));
+    cudaMallocManaged(&render_buffer, 3 * WINDOW_WIDTH * WINDOW_HEIGHT * sizeof(float));
+
+    cudaMallocManaged(&pos, 3 * sizeof(float));
+    pos[0] = 0.5F;
+    pos[1] = 0.5F;
+    pos[2] = 1.0F;
+    cudaMallocManaged(reinterpret_cast<float **>(&rot), 3 * 3 * sizeof(float));
+    rot[0][0] = 1.0F;
+    rot[0][1] = 0.0F;
+    rot[0][2] = 0.0F;
+    rot[1][0] = 0.0F;
+    rot[1][1] = 1.0F;
+    rot[1][2] = 0.0F;
+    rot[2][0] = 0.0F;
+    rot[2][1] = 0.0F;
+    rot[2][2] = 1.0F;
+
+    focal_length = 300.0F;
 }
 
 void FluidCUDA::step(void) {
@@ -62,16 +79,13 @@ void FluidCUDA::step(void) {
 }
 
 void FluidCUDA::render() {
-    Eigen::Vector3f pos          = Eigen::Vector3f(0, 0, 3);
-    Eigen::Matrix3f rot          = Eigen::Matrix3f::Identity();
-    float           focal_length = 1.0F;
 
     auto lastErr = cudaGetLastError();
     if (lastErr != cudaSuccess) {
         fmt::print(stderr, "Error: {}\n", cudaGetErrorString(lastErr));
     }
 
-    render_density(rot, pos, focal_length, const_cast<const float **>(S0), render_buffer);
+    render_density(rot, pos, focal_length, S0, render_buffer);
 
     lastErr = cudaGetLastError();
     if (lastErr != cudaSuccess) {
