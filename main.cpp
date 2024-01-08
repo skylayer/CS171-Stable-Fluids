@@ -1,11 +1,14 @@
-#include "fluid.h"
-#include "fmt/format.h"
-#include <vtkSmartPointer.h>
-#include <vtkXMLImageDataWriter.h>
-#include <vtkUniformGrid.h>
+#include <sstream>
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include <stb_image_write.h>
 #include <vtkFloatArray.h>
 #include <vtkPointData.h>
-#include <sstream>
+#include <vtkSmartPointer.h>
+#include <vtkUniformGrid.h>
+#include <vtkXMLImageDataWriter.h>
+#include "fluid.cuh"
+#include "fluid.h"
+#include "fmt/format.h"
 
 #define Fluid FluidCUDA
 
@@ -82,6 +85,19 @@ int main() {
         fluid.step();
         fmt::print("Iteration {}\n", i);
         fmt::print("Average time per iteration: {}s\n", (double)(clock() - start) / CLOCKS_PER_SEC / (i + 1));
+
+        fluid.render();
+
+        std::vector<unsigned char> density(WINDOW_WIDTH * WINDOW_HEIGHT * 3);
+        density.reserve(WINDOW_WIDTH * WINDOW_HEIGHT * 3);
+
+        for (int pixelId = 0; pixelId < WINDOW_WIDTH * WINDOW_HEIGHT * 3; pixelId++) {
+            density.emplace_back((unsigned char)(fluid.get_render_buffer()[pixelId] * 255));
+        }
+
+        stbi_write_png(("density" + fmt::to_string(i) + ".png").c_str(), WINDOW_WIDTH, WINDOW_HEIGHT, 3, density.data(), 0);
+
+
         continue;
         // if (i != 100) {
         //     continue;

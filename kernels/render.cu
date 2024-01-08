@@ -31,15 +31,15 @@ __device__ float density(const float *field, const Eigen::Vector3f &pos) {
         return 0;
     }
 
-    auto coord = pos.cwiseProduct(Eigen::Vector3f(CELLS_X, CELLS_Y, CELLS_Z)).eval();
+    auto coord = (pos.cwiseProduct(Eigen::Vector3f(CELLS_X - 2, CELLS_Y - 2, CELLS_Z - 2)) + Eigen::Vector3f::Constant(1)).eval();
     return lin_interp({coord.x(), coord.y(), coord.z()}, field);
 }
 
-__global__ void density_renderer(const Eigen::Matrix3f &view, const Eigen::Vector3f &pos, const float focal, const float **field, float3 *output) {
+__global__ void density_renderer(const Eigen::Matrix3f &view, const Eigen::Vector3f &pos, const float focal, const float **field, float *output) {
     const unsigned x = blockIdx.x * blockDim.x + threadIdx.x;
     const unsigned y = blockIdx.y * blockDim.y + threadIdx.y;
 
-    const static Eigen::Vector3f colors[7] = ALL_COLORS;
+    const Eigen::Vector3f colors[7] = ALL_COLORS;
 
     if (x < WINDOW_WIDTH && y < WINDOW_HEIGHT) {
         const auto dir = (view * Eigen::Vector3f(x - WINDOW_WIDTH / 2.0f, y - WINDOW_HEIGHT / 2.0f, -focal)).normalized();
@@ -47,8 +47,9 @@ __global__ void density_renderer(const Eigen::Matrix3f &view, const Eigen::Vecto
             float           accumlatedOpacity = 0;
             Eigen::Vector3f color             = Eigen::Vector3f::Zero();
             float           step              = 0.01;
+            int             maxIter           = 1000;
 
-            while (accumlatedOpacity < 1) {
+            while (accumlatedOpacity < 1 && maxIter--) {
                 float maxDensity = 0;
                 for (int i = 0; i < NUM_FLUIDS; i++) {
                     const float d = density(field[i], hit);
@@ -70,7 +71,9 @@ __global__ void density_renderer(const Eigen::Matrix3f &view, const Eigen::Vecto
                 }
             }
 
-            output[y * WINDOW_WIDTH + x] = make_float3(color.x(), color.y(), color.z());
+            output[3 * (y * WINDOW_WIDTH + x) + 0] = color.x();
+            output[3 * (y * WINDOW_WIDTH + x) + 1] = color.y();
+            output[3 * (y * WINDOW_WIDTH + x) + 2] = color.z();
         }
     }
 }

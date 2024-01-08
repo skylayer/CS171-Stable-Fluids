@@ -1,5 +1,7 @@
 #include "fluid.cuh"
 #include "fmt/format.h"
+#include "kernels/render.cuh"
+#include "kernels/solver.cuh"
 
 void FluidCUDA::swap_grids(void) {
     float *temp;
@@ -32,14 +34,17 @@ void FluidCUDA::init(void) {
     cudaMemset(U1_y, 0, num_cells * sizeof(float));
     cudaMemset(U1_x, 0, num_cells * sizeof(float));
 
-    S0 = new float *[NUM_FLUIDS]();
-    S1 = new float *[NUM_FLUIDS]();
+    cudaMallocManaged(&S0, NUM_FLUIDS * sizeof(float *));
+    cudaMallocManaged(&S1, NUM_FLUIDS * sizeof(float *));
+
     for (int i = 0; i < NUM_FLUIDS; i++) {
         cudaMallocManaged(&S0[i], num_cells * sizeof(float));
         cudaMallocManaged(&S1[i], num_cells * sizeof(float));
         cudaMemset(S0[i], 0, num_cells * sizeof(float));
         cudaMemset(S1[i], 0, num_cells * sizeof(float));
     }
+
+    cudaMalloc(&render_buffer, 3 * WINDOW_WIDTH * WINDOW_HEIGHT * sizeof(float));
 }
 
 void FluidCUDA::step(void) {
@@ -48,11 +53,32 @@ void FluidCUDA::step(void) {
     if (lastErr != cudaSuccess) {
         fmt::print(stderr, "Error: {}\n", cudaGetErrorString(lastErr));
     }
+    cudaDeviceSynchronize();
     for (int i = 0; i < NUM_FLUIDS; i++) {
         cuda_solver::s_step(S1[i], S0[i], U0_z, U0_y, U0_x);
     }
     cudaDeviceSynchronize();
     swap_grids();
+}
+
+void FluidCUDA::render() {
+    Eigen::Vector3f pos          = Eigen::Vector3f(0, 0, 3);
+    Eigen::Matrix3f rot          = Eigen::Matrix3f::Identity();
+    float           focal_length = 1.0F;
+
+    auto lastErr = cudaGetLastError();
+    if (lastErr != cudaSuccess) {
+        fmt::print(stderr, "Error: {}\n", cudaGetErrorString(lastErr));
+    }
+
+    render_density(rot, pos, focal_length, const_cast<const float **>(S0), render_buffer);
+
+    lastErr = cudaGetLastError();
+    if (lastErr != cudaSuccess) {
+        fmt::print(stderr, "Error: {}\n", cudaGetErrorString(lastErr));
+    }
+
+    cudaDeviceSynchronize();
 }
 
 void FluidCUDA::cleanup(void) {
@@ -107,6 +133,6 @@ float FluidCUDA::Ux_at(int z, int y, int x) {
     return U1_x[idx3d(z, y, x)];
 }
 
-float FluidCUDA::S_at(int z, int y, int x, int i) {
-    return S1[i][idx3d(z, y, x)];
-}
+float FluidCUDA::S_at(int z, int y, int x, int i) { return S1[i][idx3d(z, y, x)]; }
+
+float *FluidCUDA::get_render_buffer() { return render_buffer; }
