@@ -12,18 +12,31 @@ message(STATUS "Using toolchain file: ${CMAKE_TOOLCHAIN_FILE}")
 find_package(fmt CONFIG REQUIRED)
 find_package(VTK CONFIG REQUIRED)
 find_package(Eigen3 CONFIG REQUIRED)
+find_package(glad CONFIG REQUIRED)
+find_package(glfw3 CONFIG REQUIRED)
 
-# Add the executable
-add_executable(RtStableFluids
-        solver.cpp
-        main.cpp
-        fluid.cpp
+add_library(kernels
         kernels/solver.cu
         fluid.cu
         fluid.cuh
         kernels/render.cu
         kernels/utils.cu
         kernels/utils.cuh
+)
+
+# Set CUDA PIE
+target_compile_options(kernels PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler -fPIE>)
+
+# Set CUDA separate compilation to support device and host code in the same file
+set_target_properties(kernels PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+
+target_link_libraries(kernels PRIVATE fmt::fmt)
+
+# Add the executable
+add_executable(RtStableFluids
+        solver.cpp
+        main.cpp
+        fluid.cpp
 )
 
 include_directories(${PROJECT_SOURCE_DIR})
@@ -33,10 +46,17 @@ target_link_libraries(RtStableFluids PRIVATE
         fmt::fmt
         VTK::CommonCore VTK::CommonDataModel VTK::IOXML
         Eigen3::Eigen
+        kernels
 )
 
-# Set CUDA separate compilation to support device and host code in the same file
-set_target_properties(RtStableFluids PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+add_executable(opengl
+        gl.cu
+)
 
-# Set CUDA PIE
-target_compile_options(RtStableFluids PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler -fPIC>)
+target_link_libraries(opengl PRIVATE
+        fmt::fmt
+        glad::glad
+        glfw
+        Eigen3::Eigen
+        kernels
+)

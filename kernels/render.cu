@@ -70,7 +70,8 @@ __global__ void density_renderer(const float view[3][3], const float origin[3], 
             float accumlatedOpacity = 0;
             float color[3]          = {0, 0, 0};
 
-            for (float t = t_in; t < t_out; t += step) {
+            for (int i = 0; i < SampleNum; i++) {
+                float t = t_in + i * step;
                 float point[3] = {origin[0] + t * dir[0], origin[1] + t * dir[1], origin[2] + t * dir[2]};
                 for (int fluidId = 0; fluidId < NUM_FLUIDS; fluidId++) {
                     float d = density(field[fluidId], point);

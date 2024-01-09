@@ -13,7 +13,7 @@
 #define DISPLAY_KEY             0
 #define ADD_AMT_INIT         0.5f
 #define FORCE_SCALE          1.0f
-#define ALPHA_OPTION            3
+#define ALPHA_OPTION           10
 #define COLOR_SCALE            20
 #define RAINBOW_HOLD_NSTEPS    20
 
@@ -32,7 +32,7 @@
 #define CELLS_Z      200
 #define CELLS_Y      200
 #define CELLS_X      200
-#define NUM_FLUIDS   1
+#define NUM_FLUIDS   3
 
 /* Fluid parameters */
 #define DISSIPATION 0.01F

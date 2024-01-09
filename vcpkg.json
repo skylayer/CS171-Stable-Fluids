@@ -13,9 +13,6 @@
     "name" : "qt5",
     "version>=" : "5.15.12"
   }, {
-    "name" : "eigen3",
-    "version>=" : "3.4.0#3"
-  }, {
     "name" : "stb",
     "version>=" : "2023-04-11#1"
   } ]
