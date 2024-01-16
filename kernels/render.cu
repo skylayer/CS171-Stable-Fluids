@@ -36,7 +36,7 @@ __device__ float density(const float *field, const float pos[3]) {
         return 0;
     }
 
-    return lin_interp({pos[0] * (CELLS_X - 2) + 1, pos[1] * (CELLS_Y - 2) + 1, pos[2] * (CELLS_Z - 2) + 1}, field);
+    return lin_interp({pos[0] * (CELLS_X - 1), pos[1] * (CELLS_Y - 1), pos[2] * (CELLS_Z - 1)}, field);
 }
 
 __global__ void density_renderer(const float view[3][3], const float origin[3], const float focal, float **field, float *output) {

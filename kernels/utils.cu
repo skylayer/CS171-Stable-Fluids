@@ -8,13 +8,13 @@
 __device__ float lin_interp(float3 pos, const float *field) {
     auto [x, y, z] = pos;
 
-    const int zfloor = static_cast<int>(z - 0.5f);
-    const int yfloor = static_cast<int>(y - 0.5f);
-    const int xfloor = static_cast<int>(x - 0.5f);
+    const int zfloor = min(static_cast<int>(z), CELLS_Z - 2);
+    const int yfloor = min(static_cast<int>(y), CELLS_Y - 2);
+    const int xfloor = min(static_cast<int>(x), CELLS_X - 2);
 
-    const float zdiff = z - 0.5f - static_cast<float>(zfloor);
-    const float ydiff = y - 0.5f - static_cast<float>(yfloor);
-    const float xdiff = x - 0.5f - static_cast<float>(xfloor);
+    const float zdiff = z - static_cast<float>(zfloor);
+    const float ydiff = y - static_cast<float>(yfloor);
+    const float xdiff = x - static_cast<float>(xfloor);
 
     const float ftl = field[idx3d(zfloor, yfloor, xfloor)];
     const float fbl = field[idx3d(zfloor, yfloor + 1, xfloor)];

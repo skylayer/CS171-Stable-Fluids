@@ -71,13 +71,13 @@ namespace cuda_solver {
         const unsigned z = blockIdx.z * blockDim.z + threadIdx.z;
 
         if (x >= 1 && x < CELLS_X - 1 && y >= 1 && y < CELLS_Y - 1 && z >= 1 && z < CELLS_Z - 1) {
-            float z0 = static_cast<float>(z) + 0.5f - DT * U_z[idx3d(z, y, x)] * CELLS_Z;
-            float y0 = static_cast<float>(y) + 0.5f - DT * U_y[idx3d(z, y, x)] * CELLS_Y;
-            float x0 = static_cast<float>(x) + 0.5f - DT * U_x[idx3d(z, y, x)] * CELLS_X;
+            float z0 = static_cast<float>(z) - DT * U_z[idx3d(z, y, x)] * CELLS_Z;
+            float y0 = static_cast<float>(y) - DT * U_y[idx3d(z, y, x)] * CELLS_Y;
+            float x0 = static_cast<float>(x) - DT * U_x[idx3d(z, y, x)] * CELLS_X;
 
-            z0 = fmax(1.0f, fmin(static_cast<float>(CELLS_Z) - 1.0f, z0));
-            y0 = fmax(1.0f, fmin(static_cast<float>(CELLS_Y) - 1.0f, y0));
-            x0 = fmax(1.0f, fmin(static_cast<float>(CELLS_X) - 1.0f, x0));
+            z0 = fmax(0.0f, fmin(static_cast<float>(CELLS_Z - 1), z0));
+            y0 = fmax(0.0f, fmin(static_cast<float>(CELLS_Y - 1), y0));
+            x0 = fmax(0.0f, fmin(static_cast<float>(CELLS_X - 1), x0));
 
             S1[idx3d(z, y, x)] = lin_interp({x0, y0, z0}, S0);
         }
