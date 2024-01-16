@@ -15,7 +15,7 @@ namespace cuda_solver {
         BOUNDARY_X
     };
 
-    void v_step(float *U1_z, float *U1_y, float *U1_x, float *U0_z, float *U0_y, float *U0_x);
+    void v_step(float *U1_z, float *U1_y, float *U1_x, float *U0_z, float *U0_y, float *U0_x, float **S0);
     void s_step(float *S1, float *S0, float *U_z, float *U_y, float *U_x);
 
 

@@ -135,6 +135,31 @@ namespace cuda_solver {
         }
     }
 
+    __global__ void buoyancy_kernel(float *U1_z, float *U1_y, float *U1_x, const float *U0_z, const float *U0_y, const float *U0_x, float **S0) {
+        const unsigned x = blockIdx.x * blockDim.x + threadIdx.x;
+        const unsigned y = blockIdx.y * blockDim.y + threadIdx.y;
+        const unsigned z = blockIdx.z * blockDim.z + threadIdx.z;
+
+        static curandState state;
+        static bool init = false;
+        if (!init) {
+            curand_init(idx3d(z, y, x), 0, 0, &state);
+            init = true;
+        }
+
+
+        if (x >= 1 && x < CELLS_X - 1 && y >= 1 && y < CELLS_Y - 1 && z >= 1 && z < CELLS_Z - 1) {
+            for (int i = 0; i < NUM_FLUIDS; i++) {
+                float r = 5.0f * (curand_uniform(&state) - 0.5f) + 1.f;
+                U1_y[idx3d(z, y, x)] = r * DT * BUOYANCY * pow(0.5f * (S0[i][idx3d(z, y, x)] + S0[i][idx3d(z, y - 1, x)]), 1.3) * CELLS_Y + U0_y[idx3d(z, y, x)];
+            }
+        }
+
+        set_boundary_face(U1_z, BOUNDARY_Z);
+        set_boundary_face(U1_y, BOUNDARY_Y);
+        set_boundary_face(U1_x, BOUNDARY_X);
+    }
+
     __host__ void lin_solve(float *S1, const float *S0, const float a, const float b, const boundary_type type) {
         // kernel
         for (int iter = 0; iter < NUM_ITER; ++iter)
@@ -191,6 +216,10 @@ namespace cuda_solver {
         reflect_kernel<<<grid_size, block_size>>>(U1_z, U1_y, U1_x, U0_z, U0_y, U0_x);
     }
 
+    __host__ void buoyancy(float *U1_z, float *U1_y, float *U1_x, const float *U0_z, const float *U0_y, const float *U0_x, float **S0) {
+        buoyancy_kernel<<<grid_size, block_size>>>(U1_z, U1_y, U1_x, U0_z, U0_y, U0_x, S0);
+    }
+
     __host__ void swap_workspace(float *&U0_z, float *&U0_y, float *&U0_x, float *&U1_z, float *&U1_y, float *&U1_x) {
         using namespace std;
         swap(U0_z, U1_z);
@@ -198,10 +227,9 @@ namespace cuda_solver {
         swap(U0_x, U1_x);
     }
 
-    __host__ void v_step(float *U1_z, float *U1_y, float *U1_x, float *U0_z, float *U0_y, float *U0_x) {
-        set_boundary(U1_z, BOUNDARY_Z);
-        set_boundary(U1_y, BOUNDARY_Y);
-        set_boundary(U1_x, BOUNDARY_X);
+    __host__ void v_step(float *U1_z, float *U1_y, float *U1_x, float *U0_z, float *U0_y, float *U0_x, float **S0) {
+
+        buoyancy(U1_z, U1_y, U1_x, U0_z, U0_y, U0_x, S0);
         swap_workspace(U0_z, U0_y, U0_x, U1_z, U1_y, U1_x);
         // cudaDeviceSynchronize();
 

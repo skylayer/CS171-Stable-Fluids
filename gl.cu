@@ -1,5 +1,6 @@
 #include <fluid.cuh>
 #include <glad/glad.h>
+// GLFW
 #include <GLFW/glfw3.h>
 #include <iostream>
 #include "params.h"
@@ -24,30 +25,91 @@ const char *fragmentShaderSource = "#version 330 core\n"
     "   FragColor = texture(ourTexture, TexCoord);\n"
     "}\0";
 
-void add_force(FluidCUDA &fluid, int i) {
-    // 0.1 < x < 0.3, 0.4 < y < 0.6, 0.4 < z < 0.6
-    for (int x = 0.2F * CELLS_X; x <= 0.3F * CELLS_X; x++) {
-        for (int y = 0.45F * CELLS_Y; y <= 0.55F * CELLS_Y; y++) {
-            for (int z = 0.45F * CELLS_Z; z <= 0.55F * CELLS_Z; z++) {
-                fluid.add_U_x_force_at(z - 5, y, x, FORCE_SCALE * (sinf(i / 80.0F) + 1));
-                fluid.add_source_at(z - 5, y, x, 0, 0.1F);
-            }
-        }
-    }
+int i = 0;
 
-    // // 0.7 < x < 0.9, 0.4 < y < 0.6, 0.4 < z < 0.6
-    for (int x = 0.7F * CELLS_X; x <= 0.8F * CELLS_X; x++) {
-        for (int y = 0.45F * CELLS_Y; y <= 0.55F * CELLS_Y; y++) {
-            for (int z = 0.45F * CELLS_Z; z <= 0.55F * CELLS_Z; z++) {
-                fluid.add_U_x_force_at(z + 5, y, x, -FORCE_SCALE * (sinf(i / 80.0F) + 1));
-                fluid.add_source_at(z + 5, y, x, 1, 0.1F);
+void add_force(FluidCUDA &fluid, int i) {
+
+    // if (i==0) {
+    //     srand(123124);
+    //     // random
+    //     for (int x = 0; x < CELLS_X; x++) {
+    //         for (int y = 0; y < CELLS_Y; y++) {
+    //             for (int z = 0; z < CELLS_Z; z++) {
+    //                 fluid.add_source_at(z, y, x, 0, 1.F * ((rand() % RAND_MAX) / RAND_MAX - 0.5F));
+    //             }
+    //         }
+    //     }
+    // }
+
+    // 0.1 < x < 0.3, 0.4 < y < 0.6, 0.4 < z < 0.6
+    // for (int x = 0.2F * CELLS_X; x <= 0.3F * CELLS_X; x++) {
+    //     for (int y = 0.45F * CELLS_Y; y <= 0.55F * CELLS_Y; y++) {
+    //         for (int z = 0.45F * CELLS_Z; z <= 0.55F * CELLS_Z; z++) {
+    //             fluid.add_U_x_force_at(z - 5, y, x, FORCE_SCALE * (sinf(i / 80.0F) + 1));
+    //             fluid.add_source_at(z - 5, y, x, 0, 0.1F);
+    //         }
+    //     }
+    // }
+    //
+    // // // 0.7 < x < 0.9, 0.4 < y < 0.6, 0.4 < z < 0.6
+    // for (int x = 0.7F * CELLS_X; x <= 0.8F * CELLS_X; x++) {
+    //     for (int y = 0.45F * CELLS_Y; y <= 0.55F * CELLS_Y; y++) {
+    //         for (int z = 0.45F * CELLS_Z; z <= 0.55F * CELLS_Z; z++) {
+    //             fluid.add_U_x_force_at(z + 5, y, x, -FORCE_SCALE * (sinf(i / 80.0F) + 1));
+    //             fluid.add_source_at(z + 5, y, x, 1, 0.1F);
+    //         }
+    //     }
+    // }
+
+
+    const int   radius   = 5;
+    const int   duration = 1000;
+
+    // if (i == 0) {
+    //     float x     = 0;
+    //     float y     = 0;
+    //     float z     = 0;
+    //
+    //     for (int a = -radius; a <= radius; a++) {
+    //         for (int b = -radius; b <= radius; b++) {
+    //             for (int c = -radius; c <= radius; c++) {
+    //                 if (a * a + b * b + c * c <= radius * radius) {
+    //                     fluid.add_source_at(
+    //                         z + c + CELLS_Z / 2,
+    //                         y + b + CELLS_Y / 10,
+    //                         x + a + CELLS_X / 2,
+    //                         4,
+    //                         10.f);
+    //                 }
+    //             }
+    //         }
+    //     }
+    // }
+
+    if (i < duration) {
+        float x     = 0;
+        float y     = 0;
+        float z     = 0;
+
+        for (int a = -radius; a <= radius; a++) {
+            for (int b = -radius; b <= radius; b++) {
+                for (int c = -radius; c <= radius; c++) {
+                    if (a * a + b * b + c * c <= radius * radius) {
+                        fluid.add_source_at(
+                            z + c + CELLS_Z / 2,
+                            y + b + CELLS_Y / 10,
+                            x + a + CELLS_X / 2,
+                            4,
+                            60.f - fluid.S_at(z + c + CELLS_Z / 2, y + b + CELLS_Y / 10, x + a + CELLS_X / 2, 4));
+                    }
+                }
             }
         }
     }
 }
 
 FluidCUDA fluid;
-bool      simulateFlag = false;
+bool      simulateFlag = true;
 void      processInput(GLFWwindow *window);
 
 int main() {
@@ -167,7 +229,6 @@ int main() {
     height = 600;
 
     fluid.init();
-    int i = 0;
 
     // 渲染循环
     while (!glfwWindowShouldClose(window)) {
@@ -197,8 +258,6 @@ int main() {
         // 交换缓冲区和轮询IO事件
         glfwSwapBuffers(window);
         glfwPollEvents();
-
-
     }
 
     // 释放资源

@@ -69,7 +69,7 @@ void FluidCUDA::init(void) {
 }
 
 void FluidCUDA::step() {
-    cuda_solver::v_step(U1_z, U1_y, U1_x, U0_z, U0_y, U0_x);
+    cuda_solver::v_step(U1_z, U1_y, U1_x, U0_z, U0_y, U0_x, S0);
     auto lastErr = cudaGetLastError();
     if (lastErr != cudaSuccess) {
         fmt::print(stderr, "Error: {}\n", cudaGetErrorString(lastErr));

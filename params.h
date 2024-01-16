@@ -12,8 +12,8 @@
 #define WINDOW_X              400
 #define DISPLAY_KEY             0
 #define ADD_AMT_INIT         0.5f
-#define FORCE_SCALE          1.0f
-#define ALPHA_OPTION           10
+#define FORCE_SCALE          5.0f
+#define ALPHA_OPTION         0.4f
 #define COLOR_SCALE            20
 #define RAINBOW_HOLD_NSTEPS    20
 
@@ -32,15 +32,17 @@
 #define CELLS_Z      200
 #define CELLS_Y      200
 #define CELLS_X      200
-#define NUM_FLUIDS   3
+#define NUM_FLUIDS   5
 
 /* Fluid parameters */
 #define DISSIPATION 0.01F
-#define VISCOSITY   0.0001F
+#define VISCOSITY   1e-9F
+#define BUOYANCY    2e-4F
+#define AMBIENT_DENSITY 0.1F
 
 /* Simulation parameters */
 #define NUM_ITER     5
-#define DT           0.001F
+#define DT           0.01F
 #define CLEANUP      false
 
 /* Computed */
