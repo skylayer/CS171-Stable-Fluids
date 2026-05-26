@@ -16,7 +16,7 @@ static void set_boundary_values(float *field, int key) {
     case 1:
         // z-velocity (reflective when on x-y plane)
         for (int z = 1; z < CELLS_Z - 1; ++z) {
-            for (int y = 1; y < CELLS_Y; ++y) {
+            for (int y = 1; y < CELLS_Y - 1; ++y) {
                 field[idx3d(z, y, 0)]           = field[idx3d(z, y, 1)];
                 field[idx3d(z, y, CELLS_X - 1)] = field[idx3d(z, y, CELLS_X - 2)];
             }
@@ -43,7 +43,7 @@ static void set_boundary_values(float *field, int key) {
             }
         }
         for (int z = 1; z < CELLS_Z - 1; ++z) {
-            for (int x = 1; x < CELLS_X; ++x) {
+            for (int x = 1; x < CELLS_X - 1; ++x) {
                 field[idx3d(z, 0, x)]           = -field[idx3d(z, 1, x)];
                 field[idx3d(z, CELLS_Y - 1, x)] = -field[idx3d(z, CELLS_Y - 2, x)];
             }
@@ -69,7 +69,7 @@ static void set_boundary_values(float *field, int key) {
                 field[idx3d(z, CELLS_Y - 1, x)] = field[idx3d(z, CELLS_Y - 2, x)];
             }
         }
-        for (int y = 1; y < CELLS_Y; ++y) {
+        for (int y = 1; y < CELLS_Y - 1; ++y) {
             for (int x = 1; x < CELLS_X - 1; ++x) {
                 field[idx3d(0, y, x)]           = field[idx3d(1, y, x)];
                 field[idx3d(CELLS_Z - 1, y, x)] = field[idx3d(CELLS_Z - 2, y, x)];
@@ -131,9 +131,9 @@ static void set_boundary_values(float *field, int key) {
 }
 
 static float lin_interp(const float z, const float y, const float x, const float *field) {
-    int zfloor = (int)(z - 0.5f);
-    int yfloor = (int)(y - 0.5f);
-    int xfloor = (int)(x - 0.5f);
+    int zfloor = (int)floorf(z - 0.5f);
+    int yfloor = (int)floorf(y - 0.5f);
+    int xfloor = (int)floorf(x - 0.5f);
 
     float zdiff = (z - 0.5f) - (float)zfloor;
     float ydiff = (y - 0.5f) - (float)yfloor;
@@ -191,10 +191,10 @@ static void lin_solve(float *S1, const float *S0, const float a, const float b, 
                 }
             }
         }
+        set_boundary_values(S1, key);
         if (maxerror < 1e-5F) {
             break;
         }
-        set_boundary_values(S1, key);
     }
     fmt::print("Max error: {}\n", maxerror);
 }

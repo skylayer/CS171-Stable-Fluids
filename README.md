@@ -33,7 +33,12 @@ After installing the libraries, follow these steps to run the project:
 ### User Interaction Guide
 - The simulation starts automatically upon launching the program.
 - **Pause/Resume Simulation**: Press the `P` key to pause the fluid motion. Press the `O` key to resume the simulation.
-- **Camera Control**: Use `W`/`S`, `A`/`D`, `Space`, and `Ctrl` keys to move the camera for different views of the 3D simulation.
+- **Camera Control**: The camera orbits a fixed target at the centre of the volume.
+  - `A` / `D`: yaw (rotate left / right)
+  - `Space` / `Left Shift`: pitch (rotate up / down)
+  - `W` / `S`: zoom in / out
+  - `Enter`: reset the simulation
+  - `Esc`: quit
 
 ## Contributors
 - Chen Junsheng

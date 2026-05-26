@@ -1,18 +1,13 @@
 #include "fluid.h"
 
+#include <utility>
+
 void Fluid::swap_grids(void) {
-    float *temp;
-    temp = U0_z;
-    U0_z = U1_z;
-    U1_z = temp;
-    temp = U0_y;
-    U0_y = U1_y;
-    U1_y = temp;
-    temp = U0_x;
-    U0_x = U1_x;
-    U1_x = temp;
+    std::swap(U0_z, U1_z);
+    std::swap(U0_y, U1_y);
+    std::swap(U0_x, U1_x);
     for (int i = 0; i < NUM_FLUIDS; i++) {
-        S1[i] = S0[i];
+        std::swap(S0[i], S1[i]);
     }
 }
 
