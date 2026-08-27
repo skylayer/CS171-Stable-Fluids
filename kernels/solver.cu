@@ -1,71 +1,144 @@
 #include "solver.cuh"
-#include "cooperative_groups.h"
 #include "utils.cuh"
+
+#include <utility>
 
 using namespace cuda_solver;
 
-__device__ unsigned adj(const unsigned id, boundary_type type) {
-    if (id == 0)
-        return 1;
-    if (id == CELLS_X - 1 && type == BOUNDARY_X)
-        return CELLS_X - 2;
-    if (id == CELLS_Y - 1 && type == BOUNDARY_Y)
-        return CELLS_Y - 2;
-    if (id == CELLS_Z - 1 && type == BOUNDARY_Z)
-        return CELLS_Z - 2;
-    return id;
+namespace {
+    /* Cheap stateless per-cell hash (Wang mix) folded into [0, 1).
+     *
+     * The previous buoyancy kernel kept a `static curandState` inside the kernel
+     * body.  A `static` in device code is a single object in global memory shared
+     * by the whole grid, so every one of the ~8M threads was initialising and
+     * drawing from the same state concurrently.  A stateless hash gives each cell
+     * an independent value with no shared state, so there is nothing to race on.
+     */
+    __device__ inline float hash01(unsigned seed) {
+        seed = (seed ^ 61u) ^ (seed >> 16);
+        seed += seed << 3;
+        seed ^= seed >> 4;
+        seed *= 0x27d4eb2du;
+        seed ^= seed >> 15;
+        return static_cast<float>(seed) * (1.0f / 4294967296.0f);
+    }
 }
 
 namespace cuda_solver {
-    __device__ void set_boundary_face(volatile float *field, boundary_type type) {
-        const unsigned x = blockIdx.x * blockDim.x + threadIdx.x;
-        const unsigned y = blockIdx.y * blockDim.y + threadIdx.y;
-        const unsigned z = blockIdx.z * blockDim.z + threadIdx.z;
+    /* Boundary conditions.
+     *
+     * This runs as its own kernel launch and is never fused into a compute
+     * kernel.  A boundary cell is defined by interior cells that other *blocks*
+     * write, and a kernel launch boundary is the only grid-wide barrier we have;
+     * calling this at the tail of `transport_kernel` / `lin_solve_kernel` (as the
+     * code used to) read neighbours that other blocks had not written yet.
+     *
+     * The writes are partitioned so that nothing this kernel writes is also read
+     * by this kernel:
+     *   - face cells   (exactly one coordinate on the boundary) read the strictly
+     *                  interior neighbour one step in along that axis;
+     *   - edge cells   (exactly two) read the interior cell one step in along both;
+     *   - corner cells (all three) read the interior diagonal.
+     * Every read therefore lands on an interior cell, which this kernel never
+     * touches, so a single launch is race free.
+     */
+    __global__ void set_boundary_kernel(float *field, const boundary_type type) {
+        const unsigned a = blockIdx.x * blockDim.x + threadIdx.x;
+        const unsigned b = blockIdx.y * blockDim.y + threadIdx.y;
 
-        if (x < CELLS_X && y < CELLS_Y && z < CELLS_Z) {
-            if (x == 0 || x == CELLS_X - 1)
-                field[idx3d(z, y, x)] = (type == BOUNDARY_X ? -1.0f : 1.0f) * field[idx3d(z, y, adj(x, BOUNDARY_X))];
-            if (y == 0 || y == CELLS_Y - 1)
-                field[idx3d(z, y, x)] = (type == BOUNDARY_Y ? -1.0f : 1.0f) * field[idx3d(z, adj(y, BOUNDARY_Y), x)];
-            if (z == 0 || z == CELLS_Z - 1)
-                field[idx3d(z, y, x)] = (type == BOUNDARY_Z ? -1.0f : 1.0f) * field[idx3d(adj(z, BOUNDARY_Z), y, x)];
+        // A velocity component is mirrored on the two faces it is normal to and
+        // copied on the other four.
+        const float sx = type == BOUNDARY_X ? -1.0f : 1.0f;
+        const float sy = type == BOUNDARY_Y ? -1.0f : 1.0f;
+        const float sz = type == BOUNDARY_Z ? -1.0f : 1.0f;
+
+        /* faces -- the in-face coordinates stay strictly interior so the six
+         * faces write disjoint sets of cells and leave the edges to the block
+         * below. */
+        if (a >= 1 && a < CELLS_Y - 1 && b >= 1 && b < CELLS_Z - 1) {
+            field[idx3d(b, a, 0)]           = sx * field[idx3d(b, a, 1)];
+            field[idx3d(b, a, CELLS_X - 1)] = sx * field[idx3d(b, a, CELLS_X - 2)];
+        }
+        if (a >= 1 && a < CELLS_X - 1 && b >= 1 && b < CELLS_Z - 1) {
+            field[idx3d(b, 0, a)]           = sy * field[idx3d(b, 1, a)];
+            field[idx3d(b, CELLS_Y - 1, a)] = sy * field[idx3d(b, CELLS_Y - 2, a)];
+        }
+        if (a >= 1 && a < CELLS_X - 1 && b >= 1 && b < CELLS_Y - 1) {
+            field[idx3d(0, b, a)]           = sz * field[idx3d(1, b, a)];
+            field[idx3d(CELLS_Z - 1, b, a)] = sz * field[idx3d(CELLS_Z - 2, b, a)];
+        }
+
+        /* edges -- row b == 0 does no face work, so reuse it here with `a` as the
+         * free coordinate.  Each edge takes the diagonally interior cell. */
+        if (b == 0) {
+            if (a >= 1 && a < CELLS_Z - 1) { // the four edges running along z
+                field[idx3d(a, 0, 0)]                     = field[idx3d(a, 1, 1)];
+                field[idx3d(a, 0, CELLS_X - 1)]           = field[idx3d(a, 1, CELLS_X - 2)];
+                field[idx3d(a, CELLS_Y - 1, 0)]           = field[idx3d(a, CELLS_Y - 2, 1)];
+                field[idx3d(a, CELLS_Y - 1, CELLS_X - 1)] = field[idx3d(a, CELLS_Y - 2, CELLS_X - 2)];
+            }
+            if (a >= 1 && a < CELLS_Y - 1) { // the four edges running along y
+                field[idx3d(0, a, 0)]                     = field[idx3d(1, a, 1)];
+                field[idx3d(0, a, CELLS_X - 1)]           = field[idx3d(1, a, CELLS_X - 2)];
+                field[idx3d(CELLS_Z - 1, a, 0)]           = field[idx3d(CELLS_Z - 2, a, 1)];
+                field[idx3d(CELLS_Z - 1, a, CELLS_X - 1)] = field[idx3d(CELLS_Z - 2, a, CELLS_X - 2)];
+            }
+            if (a >= 1 && a < CELLS_X - 1) { // the four edges running along x
+                field[idx3d(0, 0, a)]                     = field[idx3d(1, 1, a)];
+                field[idx3d(0, CELLS_Y - 1, a)]           = field[idx3d(1, CELLS_Y - 2, a)];
+                field[idx3d(CELLS_Z - 1, 0, a)]           = field[idx3d(CELLS_Z - 2, 1, a)];
+                field[idx3d(CELLS_Z - 1, CELLS_Y - 1, a)] = field[idx3d(CELLS_Z - 2, CELLS_Y - 2, a)];
+            }
+        }
+
+        /* corners -- the CPU reference averages the three adjoining edge cells,
+         * which are written by this same launch.  Reading the interior diagonal
+         * instead keeps the kernel race free and lands on the same value to
+         * within one cell. */
+        if (a == 0 && b == 0) {
+            field[idx3d(0, 0, 0)]                                   = field[idx3d(1, 1, 1)];
+            field[idx3d(0, 0, CELLS_X - 1)]                         = field[idx3d(1, 1, CELLS_X - 2)];
+            field[idx3d(0, CELLS_Y - 1, 0)]                         = field[idx3d(1, CELLS_Y - 2, 1)];
+            field[idx3d(0, CELLS_Y - 1, CELLS_X - 1)]               = field[idx3d(1, CELLS_Y - 2, CELLS_X - 2)];
+            field[idx3d(CELLS_Z - 1, 0, 0)]                         = field[idx3d(CELLS_Z - 2, 1, 1)];
+            field[idx3d(CELLS_Z - 1, 0, CELLS_X - 1)]               = field[idx3d(CELLS_Z - 2, 1, CELLS_X - 2)];
+            field[idx3d(CELLS_Z - 1, CELLS_Y - 1, 0)]               = field[idx3d(CELLS_Z - 2, CELLS_Y - 2, 1)];
+            field[idx3d(CELLS_Z - 1, CELLS_Y - 1, CELLS_X - 1)]     = field[idx3d(CELLS_Z - 2, CELLS_Y - 2, CELLS_X - 2)];
         }
     }
 
-    __global__ void set_boundary_face_kernel(volatile float *field, boundary_type type) { set_boundary_face(field, type); }
-
-    // __global__ void set_boundary_edge_kernel(float *field, boundary_type type) {
-    //     const unsigned x = blockIdx.x * blockDim.x + threadIdx.x;
-    //     const unsigned y = blockIdx.y * blockDim.y + threadIdx.y;
-    //     const unsigned z = blockIdx.z * blockDim.z + threadIdx.z;
-    //
-    //     if (x != 0 && x != CELLS_X - 1)
-    //         field[idx3d(z, y, x)] = (field[idx3d(adj(z), y, x)] + field[idx3d(z, adj(y), x)]) / 2;
-    //     if (y != 0 && y != CELLS_Y - 1)
-    //         field[idx3d(z, y, x)] = (field[idx3d(z, y, adj(x))] + field[idx3d(adj(z), y, x)]) / 2;
-    //     if (z != 0 && z != CELLS_Z - 1)
-    //         field[idx3d(z, y, x)] = (field[idx3d(z, y, adj(x))] + field[idx3d(z, adj(y), x)]) / 2;
-    // }
-
-    __global__ void lin_solve_kernel(volatile float *S1, const float *S0, const float a, const float b, const boundary_type type) {
+    /* One colour of a red-black (checkerboard) Gauss-Seidel sweep.
+     *
+     * A cell at (z, y, x) is coloured by the parity of z + y + x.  Every one of
+     * its six face neighbours flips exactly one coordinate, so all six carry the
+     * opposite colour and none of them is written by this launch.  The sweep is
+     * therefore a genuine Gauss-Seidel update -- deterministic, and reading
+     * values that are actually finished -- instead of the in-place free-for-all
+     * the single-kernel version performed.
+     *
+     * omega is the SOR factor; omega == 1 reduces to plain Gauss-Seidel.
+     */
+    template <unsigned color>
+    __global__ void lin_solve_kernel(float *S1, const float *S0, const float a, const float b, const float omega) {
         const unsigned x = blockIdx.x * blockDim.x + threadIdx.x;
         const unsigned y = blockIdx.y * blockDim.y + threadIdx.y;
         const unsigned z = blockIdx.z * blockDim.z + threadIdx.z;
+
+        if (x < 1 || x >= CELLS_X - 1 || y < 1 || y >= CELLS_Y - 1 || z < 1 || z >= CELLS_Z - 1)
+            return;
+        if (((x + y + z) & 1u) != color)
+            return;
 
         const int index = idx3d(z, y, x);
-        if (x >= 1 && x < CELLS_X - 1 && y >= 1 && y < CELLS_Y - 1 && z >= 1 && z < CELLS_Z - 1) {
-            // Calculate the linear index from the 3D coordinates
-            // Update the cell value based on neighboring cells
-            S1[index] = (S0[index] + a * (S1[index + 1] + S1[index - 1] + S1[index + CELLS_X] + S1[index - CELLS_X] +
-                                          S1[index + CELLS_X * CELLS_Y] + S1[index - CELLS_X * CELLS_Y])) / b;
 
-            // cooperative_groups::this_grid().sync();
-        }
+        const float relaxed = (S0[index] + a * (S1[index + 1] + S1[index - 1]
+                                                + S1[index + CELLS_X] + S1[index - CELLS_X]
+                                                + S1[index + CELLS_X * CELLS_Y] + S1[index - CELLS_X * CELLS_Y])) / b;
 
-        set_boundary_face(S1, type);
+        S1[index] += omega * (relaxed - S1[index]);
     }
 
-    __global__ void transport_kernel(float *S1, const float *S0, const float *U_z, const float *U_y, const float *U_x, const boundary_type type) {
+    __global__ void transport_kernel(float *S1, const float *S0, const float *U_z, const float *U_y, const float *U_x) {
         const unsigned x = blockIdx.x * blockDim.x + threadIdx.x;
         const unsigned y = blockIdx.y * blockDim.y + threadIdx.y;
         const unsigned z = blockIdx.z * blockDim.z + threadIdx.z;
@@ -81,8 +154,6 @@ namespace cuda_solver {
 
             S1[idx3d(z, y, x)] = lin_interp({x0, y0, z0}, S0);
         }
-
-        set_boundary_face(S1, type);
     }
 
     template <bool negate>
@@ -99,8 +170,6 @@ namespace cuda_solver {
 
             div[idx3d(z, y, x)] /= negate ? -2.0f : 2.0f;
         }
-
-        set_boundary_face(div, BOUNDARY_SCALAR);
     }
 
     __global__ void project_kernel_(float *U1_z, float *U1_y, float *U1_x, const float *U0_z, const float *U0_y, const float *U0_x, const float *pressure) {
@@ -113,10 +182,6 @@ namespace cuda_solver {
             U1_y[idx3d(z, y, x)] = U0_y[idx3d(z, y, x)] - (pressure[idx3d(z, y + 1, x)] - pressure[idx3d(z, y - 1, x)]) * CELLS_Y / 2.0f;
             U1_x[idx3d(z, y, x)] = U0_x[idx3d(z, y, x)] - (pressure[idx3d(z, y, x + 1)] - pressure[idx3d(z, y, x - 1)]) * CELLS_X / 2.0f;
         }
-
-        set_boundary_face(U1_z, BOUNDARY_Z);
-        set_boundary_face(U1_y, BOUNDARY_Y);
-        set_boundary_face(U1_x, BOUNDARY_X);
     }
 
     __global__ void reflect_kernel(float *U1_z, float *U1_y, float *U1_x, const float *U0_z, const float *U0_y, const float *U0_x) {
@@ -135,58 +200,59 @@ namespace cuda_solver {
         }
     }
 
-    __global__ void buoyancy_kernel(float *U1_z, float *U1_y, float *U1_x, const float *U0_z, const float *U0_y, const float *U0_x, float **S0) {
+    __global__ void buoyancy_kernel(float *U1_z, float *U1_y, float *U1_x, const float *U0_z, const float *U0_y, const float *U0_x, float **S0, const unsigned frame) {
         const unsigned x = blockIdx.x * blockDim.x + threadIdx.x;
         const unsigned y = blockIdx.y * blockDim.y + threadIdx.y;
         const unsigned z = blockIdx.z * blockDim.z + threadIdx.z;
 
-        static curandState state;
-        static bool init = false;
-        if (!init) {
-            curand_init(idx3d(z, y, x), 0, 0, &state);
-            init = true;
-        }
-
-
         if (x >= 1 && x < CELLS_X - 1 && y >= 1 && y < CELLS_Y - 1 && z >= 1 && z < CELLS_Z - 1) {
-            for (int i = 0; i < NUM_FLUIDS; i++) {
-                float r = 5.0f * (curand_uniform(&state) - 0.5f) + 1.f;
-                U1_y[idx3d(z, y, x)] = r * DT * BUOYANCY * pow(0.5f * (S0[i][idx3d(z, y, x)] + S0[i][idx3d(z, y - 1, x)]), 1.3) * CELLS_Y + U0_y[idx3d(z, y, x)];
-            }
-        }
+            const int index = idx3d(z, y, x);
+            const float r   = 5.0f * (hash01(index * 2654435761u + frame) - 0.5f) + 1.0f;
 
-        set_boundary_face(U1_z, BOUNDARY_Z);
-        set_boundary_face(U1_y, BOUNDARY_Y);
-        set_boundary_face(U1_x, BOUNDARY_X);
+            float lift = 0.0f;
+            for (int i = 0; i < NUM_FLUIDS; i++)
+                lift += r * DT * BUOYANCY * powf(0.5f * (S0[i][index] + S0[i][idx3d(z, y - 1, x)]), 1.3f) * CELLS_Y;
+
+            U1_y[index] = U0_y[index] + lift;
+        }
     }
 
-    __host__ void lin_solve(float *S1, const float *S0, const float a, const float b, const boundary_type type) {
+    __host__ void set_boundary(float *field, boundary_type type) {
         // kernel
-        for (int iter = 0; iter < NUM_ITER; ++iter)
-            lin_solve_kernel<<<grid_size, block_size>>>(S1, S0, a, b, type);
+        set_boundary_kernel<<<boundary_grid_size, boundary_block_size>>>(field, type);
+    }
+
+    __host__ void lin_solve(float *S1, const float *S0, const float a, const float b, const boundary_type type, const float omega = 1.0f) {
+        // Red sweep, black sweep, then the boundary -- three separate launches.
+        // Launches on the same stream are ordered and carry an implicit
+        // grid-wide memory barrier, which is the synchronisation this solver
+        // needs and the one a single fused kernel cannot provide.
+        for (int iter = 0; iter < NUM_ITER; ++iter) {
+            lin_solve_kernel<0><<<grid_size, block_size>>>(S1, S0, a, b, omega);
+            lin_solve_kernel<1><<<grid_size, block_size>>>(S1, S0, a, b, omega);
+            set_boundary(S1, type);
+        }
     }
 
     __host__ void diffuse(float *S1, const float *S0, boundary_type type) {
         constexpr float a = DT * VISCOSITY * CELLS_X * CELLS_X;
         constexpr float b = 1 + 6 * a;
 
+        // Strongly diagonally dominant (b >> a), so over-relaxation buys nothing.
         lin_solve(S1, S0, a, b, type);
-    }
-
-    __host__ void set_boundary(float *field, boundary_type type) {
-        // kernel
-        set_boundary_face_kernel<<<grid_size, block_size>>>(field, type);
     }
 
     __host__ void transport(float *S1, const float *S0, const float *U_z, const float *U_y, const float *U_x, const boundary_type type) {
         // kernel
-        transport_kernel<<<grid_size, block_size>>>(S1, S0, U_z, U_y, U_x, type);
+        transport_kernel<<<grid_size, block_size>>>(S1, S0, U_z, U_y, U_x);
+        set_boundary(S1, type);
     }
 
     template <bool negate>
     __host__ void divergence(float *div, const float *U_z, const float *U_y, const float *U_x) {
         // kernel
         divergence_kernel<negate><<<grid_size, block_size>>>(div, U_z, U_y, U_x);
+        set_boundary(div, BOUNDARY_SCALAR);
     }
 
     __host__ void project(float *U1_z, float *U1_y, float *U1_x, const float *U0_z, const float *U0_y, const float *U0_x) {
@@ -194,30 +260,39 @@ namespace cuda_solver {
         if (!div) {
             cudaMalloc(&div, num_cells * sizeof(float));
             cudaMalloc(&pressure, num_cells * sizeof(float));
+            // cudaMalloc hands back uninitialised memory and the first relaxation
+            // sweep reads `pressure` before it writes it, so it has to be cleared
+            // at least once.  Later frames deliberately keep the previous
+            // solution as a warm start.
+            cudaMemset(div, 0, num_cells * sizeof(float));
+            cudaMemset(pressure, 0, num_cells * sizeof(float));
         }
 
         divergence<true>(div, U0_z, U0_y, U0_x);
-        //        cudaDeviceSynchronize();
 
         constexpr float a = CELLS_X * CELLS_Y;
         constexpr float b = 6.0f * a;
-        lin_solve(pressure, div, a, b, BOUNDARY_SCALAR);
-        //        cudaDeviceSynchronize();
+        lin_solve(pressure, div, a, b, BOUNDARY_SCALAR, SOR_OMEGA);
 
         project_kernel_<<<grid_size, block_size>>>(U1_z, U1_y, U1_x, U0_z, U0_y, U0_x, pressure);
-        //        cudaDeviceSynchronize();
-
+        set_boundary(U1_z, BOUNDARY_Z);
+        set_boundary(U1_y, BOUNDARY_Y);
+        set_boundary(U1_x, BOUNDARY_X);
     }
 
     __host__ void reflect(float *U1_z, float *U1_y, float *U1_x, const float *U0_z, const float *U0_y, const float *U0_x) {
         project(U1_z, U1_y, U1_x, U0_z, U0_y, U0_x);
-        cudaDeviceSynchronize();
 
         reflect_kernel<<<grid_size, block_size>>>(U1_z, U1_y, U1_x, U0_z, U0_y, U0_x);
     }
 
     __host__ void buoyancy(float *U1_z, float *U1_y, float *U1_x, const float *U0_z, const float *U0_y, const float *U0_x, float **S0) {
-        buoyancy_kernel<<<grid_size, block_size>>>(U1_z, U1_y, U1_x, U0_z, U0_y, U0_x, S0);
+        static unsigned frame = 0;
+
+        buoyancy_kernel<<<grid_size, block_size>>>(U1_z, U1_y, U1_x, U0_z, U0_y, U0_x, S0, frame++);
+        set_boundary(U1_z, BOUNDARY_Z);
+        set_boundary(U1_y, BOUNDARY_Y);
+        set_boundary(U1_x, BOUNDARY_X);
     }
 
     __host__ void swap_workspace(float *&U0_z, float *&U0_y, float *&U0_x, float *&U1_z, float *&U1_y, float *&U1_x) {
@@ -231,37 +306,30 @@ namespace cuda_solver {
 
         buoyancy(U1_z, U1_y, U1_x, U0_z, U0_y, U0_x, S0);
         swap_workspace(U0_z, U0_y, U0_x, U1_z, U1_y, U1_x);
-        // cudaDeviceSynchronize();
 
         transport(U1_z, U0_z, U0_z, U0_y, U0_x, BOUNDARY_Z);
         transport(U1_y, U0_y, U0_z, U0_y, U0_x, BOUNDARY_Y);
         transport(U1_x, U0_x, U0_z, U0_y, U0_x, BOUNDARY_X);
         swap_workspace(U0_z, U0_y, U0_x, U1_z, U1_y, U1_x);
-        // cudaDeviceSynchronize();
 
         diffuse(U1_z, U0_z, BOUNDARY_Z);
         diffuse(U1_y, U0_y, BOUNDARY_Y);
         diffuse(U1_x, U0_x, BOUNDARY_X);
         swap_workspace(U0_z, U0_y, U0_x, U1_z, U1_y, U1_x);
-        // cudaDeviceSynchronize();
 
         reflect(U1_z, U1_y, U1_x, U0_z, U0_y, U0_x);
         swap_workspace(U0_z, U0_y, U0_x, U1_z, U1_y, U1_x);
-        // cudaDeviceSynchronize();
 
         transport(U1_z, U0_z, U0_z, U0_y, U0_x, BOUNDARY_Z);
         transport(U1_y, U0_y, U0_z, U0_y, U0_x, BOUNDARY_Y);
         transport(U1_x, U0_x, U0_z, U0_y, U0_x, BOUNDARY_X);
         swap_workspace(U0_z, U0_y, U0_x, U1_z, U1_y, U1_x);
-        // cudaDeviceSynchronize();
 
         diffuse(U1_z, U0_z, BOUNDARY_Z);
         diffuse(U1_y, U0_y, BOUNDARY_Y);
         diffuse(U1_x, U0_x, BOUNDARY_X);
-        // cudaDeviceSynchronize();
 
         project(U0_z, U0_y, U0_x, U1_z, U1_y, U1_x);
-        // cudaDeviceSynchronize();
     }
 
     __host__ void s_step(float *S1, float *S0, float *U_z, float *U_y, float *U_x) {

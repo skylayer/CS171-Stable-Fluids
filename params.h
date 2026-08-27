@@ -45,6 +45,23 @@
 #define DT           0.01F
 #define CLEANUP      false
 
+/* Linear solver
+ *
+ * The Poisson (pressure) and Helmholtz (diffusion) systems are relaxed with
+ * red-black -- i.e. checkerboard -- Gauss-Seidel: one kernel launch per colour,
+ * so the six neighbours a cell reads are never written by the same launch.
+ *
+ * SOR_OMEGA is the over-relaxation factor applied to the pressure solve:
+ *   1.0   plain Gauss-Seidel, numerically identical to the CPU reference in
+ *         solver.cpp -- this is the default;
+ *   >1.0  SOR. The asymptotically optimal value for this Poisson system is
+ *         2 / (1 + sin(pi / N)) ~= 1.969 for N = 200, but that only pays off
+ *         once the sweep count is high enough to reach the asymptotic regime.
+ *         With NUM_ITER == 5 the solve stops long before that, so raise
+ *         NUM_ITER before raising this.
+ */
+#define SOR_OMEGA    1.0F
+
 /* Computed */
 #define num_cells (CELLS_Z * CELLS_Y * CELLS_X)
 
