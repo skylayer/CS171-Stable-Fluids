@@ -1,6 +1,5 @@
 #include "solver.h"
 
-#include <fmt/core.h>
 
 using namespace solver;
 using namespace std;
@@ -131,9 +130,9 @@ static void set_boundary_values(float *field, int key) {
 }
 
 static float lin_interp(const float z, const float y, const float x, const float *field) {
-    int zfloor = (int)(z - 0.5f);
-    int yfloor = (int)(y - 0.5f);
-    int xfloor = (int)(x - 0.5f);
+    int zfloor = std::min((int)(z - 0.5f), CELLS_Z - 2);
+    int yfloor = std::min((int)(y - 0.5f), CELLS_Y - 2);
+    int xfloor = std::min((int)(x - 0.5f), CELLS_X - 2);
 
     float zdiff = (z - 0.5f) - (float)zfloor;
     float ydiff = (y - 0.5f) - (float)yfloor;
@@ -167,9 +166,9 @@ static void transport(float *S1, const float *S0, const float *U_z, const float 
                 float y0 = ((float)y + 0.5f) - DT * U_y[idx3d(z, y, x)] * CELLS_Y;
                 float x0 = ((float)x + 0.5f) - DT * U_x[idx3d(z, y, x)] * CELLS_X;
 
-                z0 = fmax(1.0f, fmin(static_cast<float>(CELLS_Z) - 1.0f, z0));
-                y0 = fmax(1.0f, fmin(static_cast<float>(CELLS_Y) - 1.0f, y0));
-                x0 = fmax(1.0f, fmin(static_cast<float>(CELLS_X) - 1.0f, x0));
+                z0 = fmax(0.5f, fmin(static_cast<float>(CELLS_Z) - 0.5f, z0));
+                y0 = fmax(0.5f, fmin(static_cast<float>(CELLS_Y) - 0.5f, y0));
+                x0 = fmax(0.5f, fmin(static_cast<float>(CELLS_X) - 0.5f, x0));
 
                 S1[idx3d(z, y, x)] = lin_interp(z0, y0, x0, S0);
             }
@@ -196,7 +195,6 @@ static void lin_solve(float *S1, const float *S0, const float a, const float b, 
         }
         set_boundary_values(S1, key);
     }
-    fmt::print("Max error: {}\n", maxerror);
 }
 
 static void diffuse(float *S1, const float *S0, int key) {
@@ -271,12 +269,11 @@ void swap_workspace(float *&U0_z, float *&U0_y, float *&U0_x, float *&U1_z, floa
     swap(U0_x, U1_x);
 }
 
-void solver::v_step(float *U1_z, float *U1_y, float *U1_x, float *U0_z, float *U0_y, float *U0_x) {
-    // aftermath of adding forces
-    set_boundary_values(U1_z, 1);
-    set_boundary_values(U1_y, 2);
-    set_boundary_values(U1_x, 3);
-    swap_workspace(U0_z, U0_y, U0_x, U1_z, U1_y, U1_x);
+void solver::v_step(float *&U1_z, float *&U1_y, float *&U1_x, float *&U0_z, float *&U0_y, float *&U0_x) {
+    // aftermath of adding forces -- U0 is the live field, U1 is scratch
+    set_boundary_values(U0_z, 1);
+    set_boundary_values(U0_y, 2);
+    set_boundary_values(U0_x, 3);
 
     // self-advect
     transport(U1_z, U0_z, U0_z, U0_y, U0_x, 1);

@@ -1,4 +1,5 @@
 #include "solver.cuh"
+#include "cuda_check.cuh"
 #include "utils.cuh"
 
 #include <utility>
@@ -6,6 +7,19 @@
 using namespace cuda_solver;
 
 namespace {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 600
+    /* atomicAdd(double *) is native only from SM 6.0 onwards. */
+    __device__ inline double atomicAdd(double *address, double val) {
+        auto             *ptr = reinterpret_cast<unsigned long long *>(address);
+        unsigned long long old = *ptr, assumed;
+        do {
+            assumed = old;
+            old     = atomicCAS(ptr, assumed, __double_as_longlong(val + __longlong_as_double(assumed)));
+        } while (assumed != old);
+        return __longlong_as_double(old);
+    }
+#endif
+
     /* Cheap stateless per-cell hash (Wang mix) folded into [0, 1).
      *
      * The previous buoyancy kernel kept a `static curandState` inside the kernel
@@ -213,8 +227,48 @@ namespace cuda_solver {
             for (int i = 0; i < NUM_FLUIDS; i++)
                 lift += r * DT * BUOYANCY * powf(0.5f * (S0[i][index] + S0[i][idx3d(z, y - 1, x)]), 1.3f) * CELLS_Y;
 
+            // U1 is the whole new velocity field, not just the component buoyancy
+            // touches: z and x used to be left holding whatever the scratch buffer
+            // had from two frames ago, which then flowed on into transport.
+            U1_z[index] = U0_z[index];
             U1_y[index] = U0_y[index] + lift;
+            U1_x[index] = U0_x[index];
         }
+    }
+
+    /* Sum the interior of a field.  Each block reduces in shared memory and adds
+     * one value to a double accumulator, so the result does not depend on block
+     * order beyond double rounding. */
+    __global__ void interior_sum_kernel(const float *field, double *accum) {
+        __shared__ float partial[BLOCK_X * BLOCK_Y * BLOCK_Z];
+
+        const unsigned x   = blockIdx.x * blockDim.x + threadIdx.x;
+        const unsigned y   = blockIdx.y * blockDim.y + threadIdx.y;
+        const unsigned z   = blockIdx.z * blockDim.z + threadIdx.z;
+        const unsigned tid = (threadIdx.z * blockDim.y + threadIdx.y) * blockDim.x + threadIdx.x;
+
+        partial[tid] = x >= 1 && x < CELLS_X - 1 && y >= 1 && y < CELLS_Y - 1 && z >= 1 && z < CELLS_Z - 1
+                           ? field[idx3d(z, y, x)]
+                           : 0.0f;
+        __syncthreads();
+
+        for (unsigned stride = (BLOCK_X * BLOCK_Y * BLOCK_Z) / 2; stride > 0; stride >>= 1) {
+            if (tid < stride)
+                partial[tid] += partial[tid + stride];
+            __syncthreads();
+        }
+
+        if (tid == 0)
+            atomicAdd(accum, static_cast<double>(partial[0]));
+    }
+
+    __global__ void subtract_mean_kernel(float *field, const double *accum, const double count) {
+        const unsigned x = blockIdx.x * blockDim.x + threadIdx.x;
+        const unsigned y = blockIdx.y * blockDim.y + threadIdx.y;
+        const unsigned z = blockIdx.z * blockDim.z + threadIdx.z;
+
+        if (x < CELLS_X && y < CELLS_Y && z < CELLS_Z)
+            field[idx3d(z, y, x)] -= static_cast<float>(*accum / count);
     }
 
     __host__ void set_boundary(float *field, boundary_type type) {
@@ -238,6 +292,17 @@ namespace cuda_solver {
         constexpr float a = DT * VISCOSITY * CELLS_X * CELLS_X;
         constexpr float b = 1 + 6 * a;
 
+        // With the shipped VISCOSITY the off-diagonal weight is ~4e-7, so NUM_ITER
+        // sweeps move the field by ~1e-5 relative -- the solve is the identity to
+        // well inside what a float can represent, but it still costs 3 launches
+        // per iteration per component. Copy instead, and let a real viscosity
+        // switch the solve back on.
+        if constexpr (6.0f * a < 1e-5f) {
+            cudaMemcpyAsync(S1, S0, num_cells * sizeof(float), cudaMemcpyDeviceToDevice);
+            set_boundary(S1, type);
+            return;
+        }
+
         // Strongly diagonally dominant (b >> a), so over-relaxation buys nothing.
         lin_solve(S1, S0, a, b, type);
     }
@@ -256,19 +321,34 @@ namespace cuda_solver {
     }
 
     __host__ void project(float *U1_z, float *U1_y, float *U1_x, const float *U0_z, const float *U0_y, const float *U0_x) {
-        static float *div = nullptr, *pressure = nullptr;
+        static float  *div = nullptr, *pressure = nullptr;
+        static double *div_sum = nullptr;
         if (!div) {
-            cudaMalloc(&div, num_cells * sizeof(float));
-            cudaMalloc(&pressure, num_cells * sizeof(float));
+            CUDA_CHECK(cudaMalloc(&div, num_cells * sizeof(float)));
+            CUDA_CHECK(cudaMalloc(&pressure, num_cells * sizeof(float)));
+            CUDA_CHECK(cudaMalloc(&div_sum, sizeof(double)));
             // cudaMalloc hands back uninitialised memory and the first relaxation
             // sweep reads `pressure` before it writes it, so it has to be cleared
             // at least once.  Later frames deliberately keep the previous
             // solution as a warm start.
-            cudaMemset(div, 0, num_cells * sizeof(float));
-            cudaMemset(pressure, 0, num_cells * sizeof(float));
+            CUDA_CHECK(cudaMemset(div, 0, num_cells * sizeof(float)));
+            CUDA_CHECK(cudaMemset(pressure, 0, num_cells * sizeof(float)));
         }
 
         divergence<true>(div, U0_z, U0_y, U0_x);
+
+        /* Every wall is Neumann, so the discrete Laplacian is singular with the
+         * constant vector in its null space and the system is only solvable for a
+         * right-hand side that sums to zero over the interior.  The divergence of
+         * a numerical velocity field never quite does, and the incompatible part
+         * is exactly what the relaxation cannot remove: without this projection
+         * the residual stalls on a plateau no matter how many sweeps it gets.
+         * Subtracting over the whole field keeps the boundary layer consistent
+         * with the interior it mirrors. */
+        constexpr double interior = static_cast<double>(CELLS_X - 2) * (CELLS_Y - 2) * (CELLS_Z - 2);
+        CUDA_CHECK(cudaMemsetAsync(div_sum, 0, sizeof(double)));
+        interior_sum_kernel<<<grid_size, block_size>>>(div, div_sum);
+        subtract_mean_kernel<<<grid_size, block_size>>>(div, div_sum, interior);
 
         constexpr float a = CELLS_X * CELLS_Y;
         constexpr float b = 6.0f * a;
@@ -302,7 +382,7 @@ namespace cuda_solver {
         swap(U0_x, U1_x);
     }
 
-    __host__ void v_step(float *U1_z, float *U1_y, float *U1_x, float *U0_z, float *U0_y, float *U0_x, float **S0) {
+    __host__ void v_step(float *&U1_z, float *&U1_y, float *&U1_x, float *&U0_z, float *&U0_y, float *&U0_x, float **S0) {
 
         buoyancy(U1_z, U1_y, U1_x, U0_z, U0_y, U0_x, S0);
         swap_workspace(U0_z, U0_y, U0_x, U1_z, U1_y, U1_x);

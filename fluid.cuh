@@ -18,6 +18,11 @@ private:
 
     float theta, phi, radius;
 
+    /* Bit i is set once fluid i has ever been given a source. The renderer skips
+     * the rest: with NUM_FLUIDS == 5 and only one seeded, four of every five
+     * trilinear fetches were sampling a field that is identically zero. */
+    unsigned active_fluids = 0;
+
     void swap_grids(void);
 
 public:

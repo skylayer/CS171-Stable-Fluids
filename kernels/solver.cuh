@@ -15,7 +15,12 @@ namespace cuda_solver {
         BOUNDARY_X
     };
 
-    void v_step(float *U1_z, float *U1_y, float *U1_x, float *U0_z, float *U0_y, float *U0_x, float **S0);
+    /* The velocity pointers are taken by reference: v_step ping-pongs the two
+     * workspaces internally and the caller has to follow along.  On return the
+     * new velocity field is in U0_* and U1_* is scratch, which is what the
+     * closing `project(U0_*, U1_*)` writes.  Passing them by value -- as this
+     * used to -- left the caller pointing at the pre-projection field. */
+    void v_step(float *&U1_z, float *&U1_y, float *&U1_x, float *&U0_z, float *&U0_y, float *&U0_x, float **S0);
     void s_step(float *S1, float *S0, float *U_z, float *U_y, float *U_x);
 
 
@@ -23,6 +28,10 @@ namespace cuda_solver {
     constexpr unsigned BLOCK_X = 8;
     constexpr unsigned BLOCK_Y = 8;
     constexpr unsigned BLOCK_Z = 16;
+
+    // interior_sum_kernel halves a shared-memory array down to one value.
+    static_assert((BLOCK_X * BLOCK_Y * BLOCK_Z & (BLOCK_X * BLOCK_Y * BLOCK_Z - 1)) == 0,
+                  "block must hold a power-of-two number of threads");
 
     inline dim3 block_size(BLOCK_X, BLOCK_Y, BLOCK_Z);
     // grid size, rounded up -- `N / B + 1` launched a whole redundant block slab

@@ -1,20 +1,13 @@
 #include "fluid.h"
 
 void Fluid::swap_grids(void) {
-    float *temp;
-    temp = U0_z;
-    U0_z = U1_z;
-    U1_z = temp;
-    temp = U0_y;
-    U0_y = U1_y;
-    U1_y = temp;
-    temp = U0_x;
-    U0_x = U1_x;
-    U1_x = temp;
+    // The velocity grids are not swapped here: v_step takes its pointers by
+    // reference and has already left the new field in U0_* and the scratch in
+    // U1_*. Swapping again would feed the scratch buffer to the next frame.
     for (int i = 0; i < NUM_FLUIDS; i++) {
-        temp  = S0[i];
-        S0[i] = S1[i];
-        S1[i] = temp;
+        float *temp = S0[i];
+        S0[i]       = S1[i];
+        S1[i]       = temp;
     }
 }
 
@@ -45,7 +38,7 @@ void Fluid::init(void) {
 void Fluid::step(void) {
     solver::v_step(U1_z, U1_y, U1_x, U0_z, U0_y, U0_x);
     for (int i = 0; i < NUM_FLUIDS; i++) {
-        solver::s_step(S1[i], S0[i], U0_z, U0_y, U0_x);
+        solver::s_step(S1[i], S0[i], U0_z, U0_y, U0_x); // U0_* is v_step's output
     }
     swap_grids();
 }
@@ -68,19 +61,19 @@ void Fluid::cleanup(void) {
 
 void Fluid::add_U_z_force_at(int z, int y, int x, float force) {
     if (z > 0 && z < CELLS_Z - 1 && y > 0 && y < CELLS_Y - 1 && x > 0 && x < CELLS_X - 1) {
-        U1_z[idx3d(z, y, x)] += force;
+        U0_z[idx3d(z, y, x)] += force;
     }
 }
 
 void Fluid::add_U_y_force_at(int z, int y, int x, float force) {
     if (z > 0 && z < CELLS_Z - 1 && y > 0 && y < CELLS_Y - 1 && x > 0 && x < CELLS_X - 1) {
-        U1_y[idx3d(z, y, x)] += force;
+        U0_y[idx3d(z, y, x)] += force;
     }
 }
 
 void Fluid::add_U_x_force_at(int z, int y, int x, float force) {
     if (z > 0 && z < CELLS_Z - 1 && y > 0 && y < CELLS_Y - 1 && x > 0 && x < CELLS_X - 1) {
-        U1_x[idx3d(z, y, x)] += force;
+        U0_x[idx3d(z, y, x)] += force;
     }
 }
 
@@ -91,15 +84,15 @@ void Fluid::add_source_at(int z, int y, int x, int i, float source) {
 }
 
 float Fluid::Uz_at(int z, int y, int x) {
-    return U1_z[idx3d(z, y, x)];
+    return U0_z[idx3d(z, y, x)];
 }
 
 float Fluid::Uy_at(int z, int y, int x) {
-    return U1_y[idx3d(z, y, x)];
+    return U0_y[idx3d(z, y, x)];
 }
 
 float Fluid::Ux_at(int z, int y, int x) {
-    return U1_x[idx3d(z, y, x)];
+    return U0_x[idx3d(z, y, x)];
 }
 
 float Fluid::S_at(int z, int y, int x, int i) {

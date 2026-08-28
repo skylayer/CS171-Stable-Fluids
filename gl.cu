@@ -261,6 +261,7 @@ int main() {
     }
 
     // 释放资源
+    fluid.cleanup();
     glfwTerminate();
     return 0;
 }

@@ -3,6 +3,7 @@
 //
 
 #include "render.cuh"
+#include "cuda_check.cuh"
 #include "utils.cuh"
 
 
@@ -31,19 +32,18 @@ __device__ bool intersect(const float pos[3], const float dir[3], float &t_in, f
 }
 
 
-__device__ float density(const float *field, const float pos[3]) {
-    if (pos[0] < 0 || pos[0] > 1 || pos[1] < 0 || pos[1] > 1 || pos[2] < 0 || pos[2] > 1) {
-        return 0;
-    }
+/* Held in constant memory rather than as a per-thread local array: indexing it
+ * by a runtime fluid id would otherwise push all 21 floats into local memory and
+ * make every thread store them again at launch. */
+__constant__ float fluid_colors[7][3] = ALL_COLORS;
 
-    return lin_interp({pos[0] * (CELLS_X - 1), pos[1] * (CELLS_Y - 1), pos[2] * (CELLS_Z - 1)}, field);
+__device__ bool inside_volume(const float pos[3]) {
+    return pos[0] >= 0 && pos[0] <= 1 && pos[1] >= 0 && pos[1] <= 1 && pos[2] >= 0 && pos[2] <= 1;
 }
 
-__global__ void density_renderer(const float view[3][3], const float origin[3], const float focal, float **field, float *output) {
+__global__ void density_renderer(const float view[3][3], const float origin[3], const float focal, float **field, const unsigned active_fluids, float *output) {
     const unsigned x = blockIdx.x * blockDim.x + threadIdx.x;
     const unsigned y = blockIdx.y * blockDim.y + threadIdx.y;
-
-    const float colors[7][3] = ALL_COLORS;
 
     if (x < WINDOW_WIDTH && y < WINDOW_HEIGHT) {
         // Reset frame buffer
@@ -65,23 +65,47 @@ __global__ void density_renderer(const float view[3][3], const float origin[3], 
         if (float t_in, t_out; intersect(origin, dir, t_in, t_out)) {
             const int SampleNum = 1000;
 
-            float step = (t_out - t_in) / SampleNum;
+            // The camera may sit inside the volume, in which case t_in is
+            // negative and the march would start behind the eye.
+            t_in = fmaxf(t_in, 0.0f);
+
+            const float step = (t_out - t_in) / SampleNum;
 
             float accumlatedOpacity = 0;
             float color[3]          = {0, 0, 0};
 
             for (int i = 0; i < SampleNum; i++) {
-                float t = t_in + i * step;
-                float point[3] = {origin[0] + t * dir[0], origin[1] + t * dir[1], origin[2] + t * dir[2]};
-                for (int fluidId = 0; fluidId < NUM_FLUIDS; fluidId++) {
-                    float d = density(field[fluidId], point);
-                    if (d > 0) {
-                        float opacity = 1 - exp(-d * step * ALPHA_OPTION);
-                        float weight  = opacity * (1 - accumlatedOpacity);
+                // Nothing behind an all but opaque column can still change this pixel.
+                if (accumlatedOpacity > 0.995f) {
+                    break;
+                }
 
-                        color[0] += weight * colors[fluidId][0];
-                        color[1] += weight * colors[fluidId][1];
-                        color[2] += weight * colors[fluidId][2];
+                const float t        = t_in + i * step;
+                const float point[3] = {origin[0] + t * dir[0], origin[1] + t * dir[1], origin[2] + t * dir[2]};
+
+                // Independent of the fluid, so it does not belong in the loop below.
+                if (!inside_volume(point)) {
+                    continue;
+                }
+
+                const float3 sample = {point[0] * (CELLS_X - 1), point[1] * (CELLS_Y - 1), point[2] * (CELLS_Z - 1)};
+
+                for (int fluidId = 0; fluidId < NUM_FLUIDS; fluidId++) {
+                    // active_fluids is uniform across the warp, so this costs no
+                    // divergence and skips the eight trilinear fetches a fluid
+                    // that was never seeded would contribute nothing from.
+                    if (!(active_fluids & 1u << fluidId)) {
+                        continue;
+                    }
+
+                    const float d = lin_interp(sample, field[fluidId]);
+                    if (d > 0) {
+                        const float opacity = 1 - __expf(-d * step * ALPHA_OPTION);
+                        const float weight  = opacity * (1 - accumlatedOpacity);
+
+                        color[0] += weight * fluid_colors[fluidId][0];
+                        color[1] += weight * fluid_colors[fluidId][1];
+                        color[2] += weight * fluid_colors[fluidId][2];
                         accumlatedOpacity += weight;
                     }
                 }
@@ -95,10 +119,12 @@ __global__ void density_renderer(const float view[3][3], const float origin[3], 
 }
 
 
-__host__ void render_density(const float view[3][3], const float pos[3], const float focal, float **field, float *output) {
-    const dim3 block_size(16, 16);
-    const dim3 grid_size(WINDOW_WIDTH / block_size.x + 1, WINDOW_HEIGHT / block_size.y + 1);
+__host__ void render_density(const float view[3][3], const float pos[3], const float focal, float **field, const unsigned active_fluids, float *output) {
+    constexpr unsigned BLOCK = 16;
 
-    density_renderer<<<grid_size, block_size>>>(view, pos, focal, field, output);
-    cudaDeviceSynchronize();
+    const dim3 block_size(BLOCK, BLOCK);
+    const dim3 grid_size((WINDOW_WIDTH + BLOCK - 1) / BLOCK, (WINDOW_HEIGHT + BLOCK - 1) / BLOCK);
+
+    density_renderer<<<grid_size, block_size>>>(view, pos, focal, field, active_fluids, output);
+    CUDA_CHECK_KERNEL();
 }

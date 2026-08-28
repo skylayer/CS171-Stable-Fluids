@@ -17,11 +17,14 @@ find_package(glfw3 CONFIG REQUIRED)
 
 add_library(kernels
         kernels/solver.cu
-        fluid.cu
-        fluid.cuh
+        kernels/solver.cuh
         kernels/render.cu
+        kernels/render.cuh
         kernels/utils.cu
         kernels/utils.cuh
+        kernels/cuda_check.cuh
+        fluid.cu
+        fluid.cuh
 )
 
 # Set CUDA PIE
@@ -48,6 +51,13 @@ target_link_libraries(RtStableFluids PRIVATE
         Eigen3::Eigen
         kernels
 )
+
+# Prints the CUDA device properties the block sizes in kernels/solver.cuh assume.
+add_executable(device_query
+        main.cu
+)
+
+target_link_libraries(device_query PRIVATE fmt::fmt)
 
 add_executable(opengl
         gl.cu
