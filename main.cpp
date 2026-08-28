@@ -66,7 +66,8 @@ int main() {
     for (int i = 1; i < CELLS_Z / 4; i++) {
         for (int j = 1; j < CELLS_Y / 4; j++) {
             for (int k = 1; k < CELLS_X / 4; k++) {
-                fluid.add_source_at(i + CELLS_Y / 4, j + CELLS_Y / 4, k + CELLS_Y / 4, 0, 1.0F);
+                fluid.add_source_at(i + CELLS_Y / 4, j + CELLS_Y / 4, k + CELLS_Y / 4, 0, SOURCE_DENSITY);
+                fluid.add_heat_at(i + CELLS_Y / 4, j + CELLS_Y / 4, k + CELLS_Y / 4, SOURCE_TEMP);
             }
         }
     }

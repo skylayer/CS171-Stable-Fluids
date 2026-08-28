@@ -1,5 +1,15 @@
 #include "solver.h"
 
+/* Legacy CPU reference.
+ *
+ * This is the original collocated-grid, first-order semi-Lagrangian solver. The
+ * CUDA path in kernels/solver.cu has since moved to a staggered (MAC) grid with
+ * MacCormack advection, an RK2 back-trace and vorticity confinement, so the two
+ * no longer implement the same scheme -- do not use this one as an oracle for
+ * that one. It is kept because it is the readable statement of the algorithm the
+ * project started from.
+ */
+
 
 using namespace solver;
 using namespace std;

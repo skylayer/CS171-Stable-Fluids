@@ -27,82 +27,37 @@ const char *fragmentShaderSource = "#version 330 core\n"
 
 int i = 0;
 
+static const int SMOKE_FLUID = 4;
+
 void add_force(FluidCUDA &fluid, int i) {
+    if (i >= SOURCE_STEPS) {
+        return;
+    }
 
-    // if (i==0) {
-    //     srand(123124);
-    //     // random
-    //     for (int x = 0; x < CELLS_X; x++) {
-    //         for (int y = 0; y < CELLS_Y; y++) {
-    //             for (int z = 0; z < CELLS_Z; z++) {
-    //                 fluid.add_source_at(z, y, x, 0, 1.F * ((rand() % RAND_MAX) / RAND_MAX - 0.5F));
-    //             }
-    //         }
-    //     }
-    // }
+    const int radius = 5;
+    const int cz = CELLS_Z / 2, cy = CELLS_Y / 10, cx = CELLS_X / 2;
 
-    // 0.1 < x < 0.3, 0.4 < y < 0.6, 0.4 < z < 0.6
-    // for (int x = 0.2F * CELLS_X; x <= 0.3F * CELLS_X; x++) {
-    //     for (int y = 0.45F * CELLS_Y; y <= 0.55F * CELLS_Y; y++) {
-    //         for (int z = 0.45F * CELLS_Z; z <= 0.55F * CELLS_Z; z++) {
-    //             fluid.add_U_x_force_at(z - 5, y, x, FORCE_SCALE * (sinf(i / 80.0F) + 1));
-    //             fluid.add_source_at(z - 5, y, x, 0, 0.1F);
-    //         }
-    //     }
-    // }
-    //
-    // // // 0.7 < x < 0.9, 0.4 < y < 0.6, 0.4 < z < 0.6
-    // for (int x = 0.7F * CELLS_X; x <= 0.8F * CELLS_X; x++) {
-    //     for (int y = 0.45F * CELLS_Y; y <= 0.55F * CELLS_Y; y++) {
-    //         for (int z = 0.45F * CELLS_Z; z <= 0.55F * CELLS_Z; z++) {
-    //             fluid.add_U_x_force_at(z + 5, y, x, -FORCE_SCALE * (sinf(i / 80.0F) + 1));
-    //             fluid.add_source_at(z + 5, y, x, 1, 0.1F);
-    //         }
-    //     }
-    // }
+    /* A plume only becomes unstable if something perturbs it, but the
+     * perturbation has to live on a scale the grid can carry. The buoyancy term
+     * used to multiply itself by per-cell white noise, which sits exactly on the
+     * scale the advection scheme erases fastest and therefore seeded nothing --
+     * and, being centred on 1 with a spread of 5, pointed downwards in about a
+     * third of the cells. This one is smooth over roughly twenty cells and
+     * drifts slowly in time, which is what actually rolls a plume up. */
+    const float t = i * 2.0f * DT;
 
-
-    const int radius   = 5;
-    const int duration = 1000;
-
-    // if (i == 0) {
-    //     float x     = 0;
-    //     float y     = 0;
-    //     float z     = 0;
-    //
-    //     for (int a = -radius; a <= radius; a++) {
-    //         for (int b = -radius; b <= radius; b++) {
-    //             for (int c = -radius; c <= radius; c++) {
-    //                 if (a * a + b * b + c * c <= radius * radius) {
-    //                     fluid.add_source_at(
-    //                         z + c + CELLS_Z / 2,
-    //                         y + b + CELLS_Y / 10,
-    //                         x + a + CELLS_X / 2,
-    //                         4,
-    //                         10.f);
-    //                 }
-    //             }
-    //         }
-    //     }
-    // }
-
-    if (i < duration) {
-        float x = 0;
-        float y = 0;
-        float z = 0;
-
-        for (int a = -radius; a <= radius; a++) {
-            for (int b = -radius; b <= radius; b++) {
-                for (int c = -radius; c <= radius; c++) {
-                    if (a * a + b * b + c * c <= radius * radius) {
-                        fluid.add_source_at(
-                            z + c + CELLS_Z / 2,
-                            y + b + CELLS_Y / 10,
-                            x + a + CELLS_X / 2,
-                            4,
-                            60.f - fluid.S_at(z + c + CELLS_Z / 2, y + b + CELLS_Y / 10, x + a + CELLS_X / 2, 4));
-                    }
+    for (int a = -radius; a <= radius; a++) {
+        for (int b = -radius; b <= radius; b++) {
+            for (int c = -radius; c <= radius; c++) {
+                if (a * a + b * b + c * c > radius * radius) {
+                    continue;
                 }
+
+                const int   z = cz + c, y = cy + b, x = cx + a;
+                const float wobble = 1.0f + 0.35f * sinf(0.9f * t + 0.31f * x) * cosf(1.3f * t + 0.27f * z);
+
+                fluid.add_source_at(z, y, x, SMOKE_FLUID, SOURCE_DENSITY - fluid.S_at(z, y, x, SMOKE_FLUID));
+                fluid.add_heat_at(z, y, x, SOURCE_TEMP * wobble - fluid.T_at(z, y, x));
             }
         }
     }

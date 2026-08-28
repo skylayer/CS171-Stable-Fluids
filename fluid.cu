@@ -8,11 +8,18 @@ void FluidCUDA::swap_grids(void) {
     // The velocity grids are not swapped here: v_step takes its pointers by
     // reference and has already left the new field in U0_* and the scratch in
     // U1_*. Swapping again would feed the scratch buffer to the next frame.
+    //
+    // The scalars do swap: s_step and t_step advect S0 -> S1, and S0 is what
+    // the renderer reads and what sources are added to, so the fresh field has
+    // to come back round to S0.
     for (int i = 0; i < NUM_FLUIDS; i++) {
         float *temp = S0[i];
         S0[i]       = S1[i];
         S1[i]       = temp;
     }
+    float *temp = T0;
+    T0          = T1;
+    T1          = temp;
 }
 
 void FluidCUDA::init(void) {
@@ -38,6 +45,13 @@ void FluidCUDA::init(void) {
         CUDA_CHECK(cudaMallocManaged(&S1[i], num_cells * sizeof(float)));
         CUDA_CHECK(cudaMemset(S0[i], 0, num_cells * sizeof(float)));
         CUDA_CHECK(cudaMemset(S1[i], 0, num_cells * sizeof(float)));
+    }
+
+    CUDA_CHECK(cudaMallocManaged(&T0, num_cells * sizeof(float)));
+    CUDA_CHECK(cudaMallocManaged(&T1, num_cells * sizeof(float)));
+    for (int i = 0; i < num_cells; i++) {
+        T0[i] = T_AMBIENT;
+        T1[i] = T_AMBIENT;
     }
 
     CUDA_CHECK(cudaMallocManaged(&render_buffer, 3 * WINDOW_WIDTH * WINDOW_HEIGHT * sizeof(float)));
@@ -66,16 +80,22 @@ void FluidCUDA::init(void) {
 }
 
 void FluidCUDA::step() {
-    cuda_solver::v_step(U1_z, U1_y, U1_x, U0_z, U0_y, U0_x, S0);
+    cuda_solver::v_step(U1_z, U1_y, U1_x, U0_z, U0_y, U0_x, S0, T0);
     auto lastErr = cudaGetLastError();
     if (lastErr != cudaSuccess) {
         fmt::print(stderr, "Error: {}\n", cudaGetErrorString(lastErr));
     }
 
-    for (int i = 0; i < NUM_FLUIDS; i++) {
-        cudaDeviceSynchronize();
-        cuda_solver::s_step(S1[i], S0[i], U0_z, U0_y, U0_x); // U0_* is v_step's output
-    }
+    // U0_* is v_step's output. Only the fluids that carry smoke are advected;
+    // with NUM_FLUIDS 5 and one seeded, the other four are identically zero.
+    for (int i = 0; i < NUM_FLUIDS; i++)
+        if (active_fluids & 1u << i)
+            cuda_solver::s_step(S1[i], S0[i], U0_z, U0_y, U0_x);
+        else
+            cudaMemcpyAsync(S1[i], S0[i], num_cells * sizeof(float), cudaMemcpyDeviceToDevice);
+
+    cuda_solver::t_step(T1, T0, U0_z, U0_y, U0_x);
+
     cudaDeviceSynchronize();
     swap_grids();
 }
@@ -114,6 +134,9 @@ void FluidCUDA::cleanup(void) {
         cudaFree(S0[i]);
         cudaFree(S1[i]);
     }
+    cudaFree(T0);
+    cudaFree(T1);
+    cuda_solver::release_scratch();
     cudaFree(S0);
     cudaFree(S1);
     cudaFree(render_buffer);
@@ -141,8 +164,14 @@ void FluidCUDA::add_U_x_force_at(int z, int y, int x, float force) {
 
 void FluidCUDA::add_source_at(int z, int y, int x, int i, float source) {
     if (z > 0 && z < CELLS_Z - 1 && y > 0 && y < CELLS_Y - 1 && x > 0 && x < CELLS_X - 1) {
-        S1[i][idx3d(z, y, x)] += source;
+        S0[i][idx3d(z, y, x)] += source;
         active_fluids |= 1u << i;
+    }
+}
+
+void FluidCUDA::add_heat_at(int z, int y, int x, float heat) {
+    if (z > 0 && z < CELLS_Z - 1 && y > 0 && y < CELLS_Y - 1 && x > 0 && x < CELLS_X - 1) {
+        T0[idx3d(z, y, x)] += heat;
     }
 }
 
@@ -304,6 +333,8 @@ float FluidCUDA::Uy_at(int z, int y, int x) { return U0_y[idx3d(z, y, x)]; }
 
 float FluidCUDA::Ux_at(int z, int y, int x) { return U0_x[idx3d(z, y, x)]; }
 
-float FluidCUDA::S_at(int z, int y, int x, int i) { return S1[i][idx3d(z, y, x)]; }
+float FluidCUDA::S_at(int z, int y, int x, int i) { return S0[i][idx3d(z, y, x)]; }
+
+float FluidCUDA::T_at(int z, int y, int x) { return T0[idx3d(z, y, x)]; }
 
 float *FluidCUDA::get_render_buffer() { return render_buffer; }

@@ -13,7 +13,7 @@
 #define DISPLAY_KEY         0
 #define ADD_AMT_INIT        0.5f
 #define FORCE_SCALE         5.0f
-#define ALPHA_OPTION        0.4f
+#define ALPHA_OPTION        32.0f
 #define COLOR_SCALE         20
 #define RAINBOW_HOLD_NSTEPS 20
 
@@ -36,11 +36,62 @@
 #define CELLS_X    200
 #define NUM_FLUIDS 5
 
-/* Fluid parameters */
-#define DISSIPATION     0.01F
-#define VISCOSITY       1e-9F
-#define BUOYANCY        2e-4F
-#define AMBIENT_DENSITY 0.1F
+/* Fluid parameters
+ *
+ * Buoyancy is Boussinesq, following Fedkiw et al. 2001:
+ *
+ *     f_y = -ALPHA_SMOKE * s + BETA_TEMP * (T - T_AMBIENT)
+ *
+ * Two terms, not one. The smoke's own mass pulls down; the temperature excess
+ * pushes up. A model with only the up term (which is what this used to have)
+ * cannot produce negative buoyancy anywhere, so nothing ever overturns and no
+ * Rayleigh-Taylor instability can grow -- the plume just rises as a column.
+ *
+ * The force is linear in both quantities. The old code raised density to the
+ * 1.3 power, which has no physical basis, and multiplied by CELLS_Y, which made
+ * a body force scale with resolution: the same constant meant something 3.1x
+ * stronger at 200^3 than at 64^3, so it could not be tuned meaningfully.
+ *
+ * COOLING has to be slow enough that the plume stays buoyant while it crosses
+ * the box. At 0.9 the heat was gone in about one time unit while the smoke it
+ * carried decayed six times slower, so the net force turned downwards and the
+ * plume sank and spread along the floor instead of rising.
+ */
+#define ALPHA_SMOKE 0.6F
+#define BETA_TEMP   2.4F
+#define T_AMBIENT   0.0F
+#define COOLING     0.25F /* rate at which T relaxes back to T_AMBIENT */
+
+#define VISCOSITY   1e-9F
+#define DISSIPATION 0.15F /* smoke density decay rate, per unit time */
+
+/* Vorticity confinement (Fedkiw et al. 2001)
+ *
+ *     f = VORT_EPS * h * (N x omega),   N = grad|omega| / |grad|omega||
+ *
+ * Feeds energy back into the small scales that the advection scheme dissipates.
+ * The h factor makes it vanish under refinement, so it is a model for the
+ * missing sub-grid detail rather than a permanent forcing. 0 disables it.
+ *
+ * It has to stay small next to the buoyancy or it simply scrambles the flow.
+ * Measured on a 64^3 plume, height the smoke front reaches after 80 steps and
+ * its mean rise speed:
+ *
+ *   VORT_EPS |    0        1        2        4
+ *   ---------+--------------------------------
+ *   y_tip    | 0.906    0.875    0.891    0.891
+ *   rise     | 0.475    0.402    0.375    0.308
+ *
+ * At 18 -- roughly eps*h*|omega| ~ 5x the buoyancy -- the plume stopped rising
+ * altogether and spread along the floor. 2 keeps the detail and costs about a
+ * fifth of the rise speed.
+ */
+#define VORT_EPS 2.0F
+
+/* Source injection */
+#define SOURCE_DENSITY 1.0F
+#define SOURCE_TEMP    1.0F
+#define SOURCE_STEPS   1000
 
 /* Simulation parameters */
 #define NUM_ITER 20

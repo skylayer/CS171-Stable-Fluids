@@ -9,7 +9,8 @@ class FluidCUDA {
 private:
     float  *U0_z, *U0_y, *U0_x, *U1_z, *U1_y, *U1_x; // velocity grids
     float  *render_buffer;
-    float **S0, **S1; // scalar grids
+    float **S0, **S1; // smoke density grids
+    float  *T0, *T1;  // temperature, the field buoyancy actually reads
 
     // Position and rotation of the camera
     float *pos;
@@ -36,6 +37,7 @@ public:
     void add_U_y_force_at(int z, int y, int x, float force);
     void add_U_x_force_at(int z, int y, int x, float force);
     void add_source_at(int z, int y, int x, int i, float source);
+    void add_heat_at(int z, int y, int x, float heat);
     void rot_left(float angle);
     void rot_up(float angle);
     void zoom_in(float dist);
@@ -45,6 +47,7 @@ public:
     float  Uy_at(int z, int y, int x);
     float  Ux_at(int z, int y, int x);
     float  S_at(int z, int y, int x, int i);
+    float  T_at(int z, int y, int x);
     float *get_render_buffer(void);
 };
 
