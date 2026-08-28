@@ -325,13 +325,18 @@ namespace cuda_solver {
             CUDA_CHECK(cudaMalloc(&div, num_cells * sizeof(float)));
             CUDA_CHECK(cudaMalloc(&pressure, num_cells * sizeof(float)));
             CUDA_CHECK(cudaMalloc(&div_sum, sizeof(double)));
-            // cudaMalloc hands back uninitialised memory and the first relaxation
-            // sweep reads `pressure` before it writes it, so it has to be cleared
-            // at least once.  Later frames deliberately keep the previous
-            // solution as a warm start.
             CUDA_CHECK(cudaMemset(div, 0, num_cells * sizeof(float)));
-            CUDA_CHECK(cudaMemset(pressure, 0, num_cells * sizeof(float)));
         }
+
+        /* Clear the guess every call, the way solver.cpp does. Keeping the
+         * previous frame's pressure as a warm start looks free -- and in the
+         * flow it measures as free, the two are indistinguishable for omega up
+         * to 1.9 -- but it also carries the solver's transient across frames,
+         * where it compounds: at omega 1.95 and above a warm-started run
+         * diverges (peak speed 0.65 -> 24) while a cleared one stays stable.
+         * cudaMalloc also hands back uninitialised memory, which the first
+         * sweep would otherwise read. */
+        CUDA_CHECK(cudaMemset(pressure, 0, num_cells * sizeof(float)));
 
         divergence<true>(div, U0_z, U0_y, U0_x);
 

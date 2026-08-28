@@ -54,32 +54,45 @@
  * so the six neighbours a cell reads are never written by the same launch.
  * That colouring is also what makes SOR possible here at all.
  *
- * SOR_OMEGA is the over-relaxation factor for the pressure solve. The
- * asymptotically optimal value for this system is 2 / (1 + sin(pi / N)) = 1.969
- * at N = 200, and measurement agrees: relative distance to the converged
- * solution from a cold start on the 200^3 grid, lower is better --
+ * On the linear system alone, over-relaxation is a large win. Relative distance
+ * to the converged solution, 200^3, cold start:
  *
  *   sweeps | omega=1.00  1.90  1.95  1.97
  *   -------+------------------------------
  *        5 |      0.998  0.984 0.981 0.980
  *       20 |      0.991  0.882 0.824 0.786
- *       40 |      0.982  0.756 0.612 0.500
  *      160 |      0.932  0.319 0.120 0.049
  *
- * Plain Gauss-Seidel barely moves this system at any sweep count a real-time
- * solver can afford, and 1.97 beats it at every count measured with no
- * overshoot, so there is no low-iteration regime where omega = 1 is preferable.
+ * Inside the closed simulation loop it is not. Measured on a 64^3 run of the
+ * real pipeline, divergence of the projected field relative to its velocity
+ * scale after 64 steps:
  *
- * NUM_ITER is a quality/cost dial, not a convergence one: the curve above is
- * still far from converged at 160 sweeps, and closing that gap wants a
- * multigrid or preconditioned-CG solver rather than more relaxation. 20 sweeps
- * costs roughly 4x what the previous 5 did in the dominant part of the frame;
- * halve it if the frame time matters more than the residual.
+ *   omega   |  1.00     1.50     1.80     1.90     1.95     1.97
+ *   --------+-------------------------------------------------------
+ *   rel_div | 0.01223  0.01208  0.01208  0.01216   blows up  blows up
+ *
+ * Everything from 1.0 to 1.9 is the same flow to within 1.4%, because each
+ * frame's solve only has to correct a field the previous frame already left
+ * nearly divergence free -- convergence rate is not what limits the result.
+ * Past ~1.93 the solver's transient outgrows what one frame can absorb and the
+ * run diverges. 1.8 keeps the faster linear solve for anyone who raises
+ * NUM_ITER or changes the grid, with margin to the cliff; 1.0 is the setting
+ * with no cliff at all if that margin is not worth carrying.
+ *
+ * NUM_ITER is a quality/cost dial. Same run, omega 1.8:
+ *
+ *   NUM_ITER |    5        10       20       40
+ *   ---------+-----------------------------------
+ *   rel_div  | 0.01553  0.01253  0.01208  0.01206
+ *
+ * 20 is the knee; 40 buys 0.2% for twice the sweeps, and 10 gets 96% of the
+ * benefit if frame time matters more. Closing the rest of the gap wants a
+ * multigrid or preconditioned-CG solver, not more relaxation.
  *
  * The diffusion solve keeps omega = 1: it is strongly diagonally dominant
  * (b = 1 + 6a with a ~ 4e-7), so there is nothing to over-relax.
  */
-#define SOR_OMEGA 1.97F
+#define SOR_OMEGA 1.8F
 
 /* Computed */
 #define num_cells (CELLS_Z * CELLS_Y * CELLS_X)
