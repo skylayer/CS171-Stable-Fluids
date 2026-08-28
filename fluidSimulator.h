@@ -147,11 +147,9 @@ private:
             for (int x = 1; x <= N; x++) {
                 for (int y = 1; y <= N; y++) {
                     for (int z = 1; z <= N; z++) {
-                        field(x, y, z) = (field_prev(x, y, z) + a * (field(x - 1, y, z) + field(x + 1, y, z) + field(x, y - 1, z) + field(x, y + 1, z) + field(
-                            x,
-                            y,
-                            z - 1
-                            ) + field(x, y, z + 1))) / (1 + 6 * a);
+                        field(x, y, z) = (field_prev(x, y, z) + a * (field(x - 1, y, z) + field(x + 1, y, z) + field(x, y - 1, z) + field(x, y + 1, z) +
+                                                                     field(x, y, z - 1) + field(x, y, z + 1))) /
+                                         (1 + 6 * a);
                     }
                 }
             }
@@ -179,9 +177,10 @@ private:
                     Scalar s       = pos(0) - i;
                     Scalar t       = pos(1) - j;
                     Scalar u       = pos(2) - k;
-                    field(x, y, z) = (1 - s) * ((1 - t) * ((1 - u) * field_prev(i, j, k) + u * field_prev(i, j, k + 1)) + t * ((1 - u) * field_prev(i, j + 1, k)
-                        + u * field_prev(i, j + 1, k + 1))) + s * ((1 - t) * ((1 - u) * field_prev(i + 1, j, k) + u * field_prev(i + 1, j, k + 1)) + t * ((1 -
-                        u) * field_prev(i + 1, j + 1, k) + u * field_prev(i + 1, j + 1, k + 1)));
+                    field(x, y, z) = (1 - s) * ((1 - t) * ((1 - u) * field_prev(i, j, k) + u * field_prev(i, j, k + 1)) +
+                                                t * ((1 - u) * field_prev(i, j + 1, k) + u * field_prev(i, j + 1, k + 1))) +
+                                     s * ((1 - t) * ((1 - u) * field_prev(i + 1, j, k) + u * field_prev(i + 1, j, k + 1)) +
+                                          t * ((1 - u) * field_prev(i + 1, j + 1, k) + u * field_prev(i + 1, j + 1, k + 1)));
                 }
             }
         }
@@ -195,11 +194,9 @@ private:
         for (int x = 1; x <= N; x++) {
             for (int y = 1; y <= N; y++) {
                 for (int z = 1; z <= N; z++) {
-                    div(x, y, z) = (velo(x + 1, y, z)(0) - velo(x - 1, y, z)(0) + velo(x, y + 1, z)(1) - velo(x, y - 1, z)(1) + velo(x, y, z + 1)(2) - velo(
-                        x,
-                        y,
-                        z - 1
-                        )(2)) / 2 / dx;
+                    div(x, y, z) = (velo(x + 1, y, z)(0) - velo(x - 1, y, z)(0) + velo(x, y + 1, z)(1) - velo(x, y - 1, z)(1) + velo(x, y, z + 1)(2) -
+                                    velo(x, y, z - 1)(2)) /
+                                   2 / dx;
                 }
             }
         }
@@ -262,7 +259,7 @@ public:
         for (int x = N / 10; x <= 3 * N / 10; x++) {
             for (int y = 4 * N / 10; y <= 6 * N / 10; y++) {
                 for (int z = 4 * N / 10; z <= 6 * N / 10; z++) {
-                    velocity(x, y-1, z) += dt * Vector(2, 0, 0);
+                    velocity(x, y - 1, z) += dt * Vector(2, 0, 0);
                 }
             }
         }
@@ -271,17 +268,15 @@ public:
         for (int x = 7 * N / 10; x <= 9 * N / 10; x++) {
             for (int y = 4 * N / 10; y <= 6 * N / 10; y++) {
                 for (int z = 4 * N / 10; z <= 6 * N / 10; z++) {
-                    velocity(x, y+1, z) += dt * Vector(-2, 0, 0);
+                    velocity(x, y + 1, z) += dt * Vector(-2, 0, 0);
                 }
             }
         }
     }
 
-    auto get_velocity() {
-        return velocity;
-    }
+    auto get_velocity() { return velocity; }
 };
 
 typedef FluidSimulator3D<float> FluidSimulator3Df;
 
-#endif //RTSTABLEFLUIDS_FLUIDSIMULATOR_CUH
+#endif // RTSTABLEFLUIDS_FLUIDSIMULATOR_CUH

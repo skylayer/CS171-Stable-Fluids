@@ -57,12 +57,12 @@ void FluidCUDA::init(void) {
     rot[2][1] = 0.0F;
     rot[2][2] = 1.0F;
 
-    theta = 3.1415926F / 2;
-    phi = 0.0F;
+    theta  = 3.1415926F / 2;
+    phi    = 0.0F;
     radius = 2.0F;
 
-    focal_length   = 600.0F;
-    active_fluids  = 0;
+    focal_length  = 600.0F;
+    active_fluids = 0;
 }
 
 void FluidCUDA::step() {
@@ -159,11 +159,7 @@ void FluidCUDA::rot_left(float angle) {
     float target[3] = {0.5f, 0.5f, 0.5f};
 
     // Direction vector (from pos to target)
-    float dir[3] = {
-        pos[0] - target[0],
-        pos[1] - target[1],
-        pos[2] - target[2]
-    };
+    float dir[3] = {pos[0] - target[0], pos[1] - target[1], pos[2] - target[2]};
     // Normalize the direction vector
     float norm = sqrtf(dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]);
     dir[0] /= norm;
@@ -174,11 +170,7 @@ void FluidCUDA::rot_left(float angle) {
     float up[3] = {0.0f, 1.0f, 0.0f};
 
     // Right vector = up x dir
-    float right[3] = {
-        up[1] * dir[2] - up[2] * dir[1],
-        up[2] * dir[0] - up[0] * dir[2],
-        up[0] * dir[1] - up[1] * dir[0]
-    };
+    float right[3] = {up[1] * dir[2] - up[2] * dir[1], up[2] * dir[0] - up[0] * dir[2], up[0] * dir[1] - up[1] * dir[0]};
 
     norm = sqrtf(right[0] * right[0] + right[1] * right[1] + right[2] * right[2]);
     right[0] /= norm;
@@ -186,12 +178,8 @@ void FluidCUDA::rot_left(float angle) {
     right[2] /= norm;
 
     // Recompute up vector = dir x right
-    float new_up[3] = {
-        dir[1] * right[2] - dir[2] * right[1],
-        dir[2] * right[0] - dir[0] * right[2],
-        dir[0] * right[1] - dir[1] * right[0]
-    };
-    norm = sqrtf(new_up[0] * new_up[0] + new_up[1] * new_up[1] + new_up[2] * new_up[2]);
+    float new_up[3] = {dir[1] * right[2] - dir[2] * right[1], dir[2] * right[0] - dir[0] * right[2], dir[0] * right[1] - dir[1] * right[0]};
+    norm            = sqrtf(new_up[0] * new_up[0] + new_up[1] * new_up[1] + new_up[2] * new_up[2]);
     new_up[0] /= norm;
     new_up[1] /= norm;
     new_up[2] /= norm;
@@ -221,11 +209,7 @@ void FluidCUDA::rot_up(float angle) {
     float target[3] = {0.5f, 0.5f, 0.5f};
 
     // Direction vector (from pos to target)
-    float dir[3] = {
-        pos[0] - target[0],
-        pos[1] - target[1],
-        pos[2] - target[2]
-    };
+    float dir[3] = {pos[0] - target[0], pos[1] - target[1], pos[2] - target[2]};
     // Normalize the direction vector
     float norm = sqrtf(dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]);
     dir[0] /= norm;
@@ -236,11 +220,7 @@ void FluidCUDA::rot_up(float angle) {
     float up[3] = {0.0f, 1.0f, 0.0f};
 
     // Right vector = up x dir
-    float right[3] = {
-        up[1] * dir[2] - up[2] * dir[1],
-        up[2] * dir[0] - up[0] * dir[2],
-        up[0] * dir[1] - up[1] * dir[0]
-    };
+    float right[3] = {up[1] * dir[2] - up[2] * dir[1], up[2] * dir[0] - up[0] * dir[2], up[0] * dir[1] - up[1] * dir[0]};
 
     norm = sqrtf(right[0] * right[0] + right[1] * right[1] + right[2] * right[2]);
     right[0] /= norm;
@@ -248,12 +228,8 @@ void FluidCUDA::rot_up(float angle) {
     right[2] /= norm;
 
     // Recompute up vector = dir x right
-    float new_up[3] = {
-        dir[1] * right[2] - dir[2] * right[1],
-        dir[2] * right[0] - dir[0] * right[2],
-        dir[0] * right[1] - dir[1] * right[0]
-    };
-    norm = sqrtf(new_up[0] * new_up[0] + new_up[1] * new_up[1] + new_up[2] * new_up[2]);
+    float new_up[3] = {dir[1] * right[2] - dir[2] * right[1], dir[2] * right[0] - dir[0] * right[2], dir[0] * right[1] - dir[1] * right[0]};
+    norm            = sqrtf(new_up[0] * new_up[0] + new_up[1] * new_up[1] + new_up[2] * new_up[2]);
     new_up[0] /= norm;
     new_up[1] /= norm;
     new_up[2] /= norm;
@@ -284,11 +260,7 @@ void FluidCUDA::zoom_in(float dist) {
     float target[3] = {0.5f, 0.5f, 0.5f};
 
     // Direction vector (from pos to target)
-    float dir[3] = {
-        pos[0] - target[0],
-        pos[1] - target[1],
-        pos[2] - target[2]
-    };
+    float dir[3] = {pos[0] - target[0], pos[1] - target[1], pos[2] - target[2]};
     // Normalize the direction vector
     float norm = sqrtf(dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]);
     dir[0] /= norm;
@@ -299,11 +271,7 @@ void FluidCUDA::zoom_in(float dist) {
     float up[3] = {0.0f, 1.0f, 0.0f};
 
     // Right vector = up x dir
-    float right[3] = {
-        up[1] * dir[2] - up[2] * dir[1],
-        up[2] * dir[0] - up[0] * dir[2],
-        up[0] * dir[1] - up[1] * dir[0]
-    };
+    float right[3] = {up[1] * dir[2] - up[2] * dir[1], up[2] * dir[0] - up[0] * dir[2], up[0] * dir[1] - up[1] * dir[0]};
 
     norm = sqrtf(right[0] * right[0] + right[1] * right[1] + right[2] * right[2]);
     right[0] /= norm;
@@ -311,12 +279,8 @@ void FluidCUDA::zoom_in(float dist) {
     right[2] /= norm;
 
     // Recompute up vector = dir x right
-    float new_up[3] = {
-        dir[1] * right[2] - dir[2] * right[1],
-        dir[2] * right[0] - dir[0] * right[2],
-        dir[0] * right[1] - dir[1] * right[0]
-    };
-    norm = sqrtf(new_up[0] * new_up[0] + new_up[1] * new_up[1] + new_up[2] * new_up[2]);
+    float new_up[3] = {dir[1] * right[2] - dir[2] * right[1], dir[2] * right[0] - dir[0] * right[2], dir[0] * right[1] - dir[1] * right[0]};
+    norm            = sqrtf(new_up[0] * new_up[0] + new_up[1] * new_up[1] + new_up[2] * new_up[2]);
     new_up[0] /= norm;
     new_up[1] /= norm;
     new_up[2] /= norm;

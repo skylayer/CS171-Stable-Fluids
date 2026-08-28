@@ -2,8 +2,8 @@
 // Created by condo on 2024/1/8.
 //
 
-#include "render.cuh"
 #include "cuda_check.cuh"
+#include "render.cuh"
 #include "utils.cuh"
 
 
@@ -37,9 +37,7 @@ __device__ bool intersect(const float pos[3], const float dir[3], float &t_in, f
  * make every thread store them again at launch. */
 __constant__ float fluid_colors[7][3] = ALL_COLORS;
 
-__device__ bool inside_volume(const float pos[3]) {
-    return pos[0] >= 0 && pos[0] <= 1 && pos[1] >= 0 && pos[1] <= 1 && pos[2] >= 0 && pos[2] <= 1;
-}
+__device__ bool inside_volume(const float pos[3]) { return pos[0] >= 0 && pos[0] <= 1 && pos[1] >= 0 && pos[1] <= 1 && pos[2] >= 0 && pos[2] <= 1; }
 
 __global__ void density_renderer(const float view[3][3], const float origin[3], const float focal, float **field, const unsigned active_fluids, float *output) {
     const unsigned x = blockIdx.x * blockDim.x + threadIdx.x;

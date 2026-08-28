@@ -7,14 +7,14 @@
 
 class FluidCUDA {
 private:
-    float * U0_z, *U0_y, *U0_x, *U1_z, *U1_y, *U1_x; // velocity grids
-    float * render_buffer;
+    float  *U0_z, *U0_y, *U0_x, *U1_z, *U1_y, *U1_x; // velocity grids
+    float  *render_buffer;
     float **S0, **S1; // scalar grids
 
     // Position and rotation of the camera
-    float * pos;
+    float *pos;
     float (*rot)[3];
-    float   focal_length = 400.0F;
+    float focal_length = 400.0F;
 
     float theta, phi, radius;
 

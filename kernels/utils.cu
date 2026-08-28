@@ -2,8 +2,8 @@
 // Created by condo on 2024/1/8.
 //
 
-#include "utils.cuh"
 #include "params.h"
+#include "utils.cuh"
 
 __device__ float lin_interp(float3 pos, const float *field) {
     auto [x, y, z] = pos;

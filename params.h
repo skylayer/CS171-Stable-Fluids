@@ -6,18 +6,19 @@
 // relevant systemwide parameters should go here
 
 /* GUI parameters */
-#define WINDOW_HEIGHT         600
-#define WINDOW_WIDTH          600
-#define WINDOW_Y              100
-#define WINDOW_X              400
-#define DISPLAY_KEY             0
-#define ADD_AMT_INIT         0.5f
-#define FORCE_SCALE          5.0f
-#define ALPHA_OPTION         0.4f
-#define COLOR_SCALE            20
-#define RAINBOW_HOLD_NSTEPS    20
+#define WINDOW_HEIGHT       600
+#define WINDOW_WIDTH        600
+#define WINDOW_Y            100
+#define WINDOW_X            400
+#define DISPLAY_KEY         0
+#define ADD_AMT_INIT        0.5f
+#define FORCE_SCALE         5.0f
+#define ALPHA_OPTION        0.4f
+#define COLOR_SCALE         20
+#define RAINBOW_HOLD_NSTEPS 20
 
 /* Colors */
+// clang-format off
 #define RED         {1.0f, 0.0f, 0.0f}
 #define GREEN       {0.0f, 1.0f, 0.0f}
 #define BLUE        {0.0f, 0.0f, 1.0f}
@@ -26,24 +27,25 @@
 #define MAGENTA     {0.5f, 0.0f, 0.5f}
 #define WHITE       {0.33f, 0.33f, 0.33f}
 #define ALL_COLORS  {RED, GREEN, BLUE, YELLOW, CYAN, MAGENTA, WHITE}
+// clang-format on
 
 /* Grid parameters */
-#define NDIM         3
-#define CELLS_Z      200
-#define CELLS_Y      200
-#define CELLS_X      200
-#define NUM_FLUIDS   5
+#define NDIM       3
+#define CELLS_Z    200
+#define CELLS_Y    200
+#define CELLS_X    200
+#define NUM_FLUIDS 5
 
 /* Fluid parameters */
-#define DISSIPATION 0.01F
-#define VISCOSITY   1e-9F
-#define BUOYANCY    2e-4F
+#define DISSIPATION     0.01F
+#define VISCOSITY       1e-9F
+#define BUOYANCY        2e-4F
 #define AMBIENT_DENSITY 0.1F
 
 /* Simulation parameters */
-#define NUM_ITER    20
-#define DT           0.01F
-#define CLEANUP      false
+#define NUM_ITER 20
+#define DT       0.01F
+#define CLEANUP  false
 
 /* Linear solver
  *
@@ -77,7 +79,7 @@
  * The diffusion solve keeps omega = 1: it is strongly diagonally dominant
  * (b = 1 + 6a with a ~ 4e-7), so there is nothing to over-relax.
  */
-#define SOR_OMEGA    1.97F
+#define SOR_OMEGA 1.97F
 
 /* Computed */
 #define num_cells (CELLS_Z * CELLS_Y * CELLS_X)

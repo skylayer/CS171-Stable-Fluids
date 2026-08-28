@@ -1,5 +1,5 @@
-#include "solver.cuh"
 #include "cuda_check.cuh"
+#include "solver.cuh"
 #include "utils.cuh"
 
 #include <utility>
@@ -10,12 +10,13 @@ namespace {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 600
     /* atomicAdd(double *) is native only from SM 6.0 onwards. */
     __device__ inline double atomicAdd(double *address, double val) {
-        auto             *ptr = reinterpret_cast<unsigned long long *>(address);
+        auto              *ptr = reinterpret_cast<unsigned long long *>(address);
         unsigned long long old = *ptr, assumed;
         do {
             assumed = old;
             old     = atomicCAS(ptr, assumed, __double_as_longlong(val + __longlong_as_double(assumed)));
-        } while (assumed != old);
+        }
+        while (assumed != old);
         return __longlong_as_double(old);
     }
 #endif
@@ -36,7 +37,7 @@ namespace {
         seed ^= seed >> 15;
         return static_cast<float>(seed) * (1.0f / 4294967296.0f);
     }
-}
+} // namespace
 
 namespace cuda_solver {
     /* Boundary conditions.
@@ -110,14 +111,14 @@ namespace cuda_solver {
          * instead keeps the kernel race free and lands on the same value to
          * within one cell. */
         if (a == 0 && b == 0) {
-            field[idx3d(0, 0, 0)]                                   = field[idx3d(1, 1, 1)];
-            field[idx3d(0, 0, CELLS_X - 1)]                         = field[idx3d(1, 1, CELLS_X - 2)];
-            field[idx3d(0, CELLS_Y - 1, 0)]                         = field[idx3d(1, CELLS_Y - 2, 1)];
-            field[idx3d(0, CELLS_Y - 1, CELLS_X - 1)]               = field[idx3d(1, CELLS_Y - 2, CELLS_X - 2)];
-            field[idx3d(CELLS_Z - 1, 0, 0)]                         = field[idx3d(CELLS_Z - 2, 1, 1)];
-            field[idx3d(CELLS_Z - 1, 0, CELLS_X - 1)]               = field[idx3d(CELLS_Z - 2, 1, CELLS_X - 2)];
-            field[idx3d(CELLS_Z - 1, CELLS_Y - 1, 0)]               = field[idx3d(CELLS_Z - 2, CELLS_Y - 2, 1)];
-            field[idx3d(CELLS_Z - 1, CELLS_Y - 1, CELLS_X - 1)]     = field[idx3d(CELLS_Z - 2, CELLS_Y - 2, CELLS_X - 2)];
+            field[idx3d(0, 0, 0)]                               = field[idx3d(1, 1, 1)];
+            field[idx3d(0, 0, CELLS_X - 1)]                     = field[idx3d(1, 1, CELLS_X - 2)];
+            field[idx3d(0, CELLS_Y - 1, 0)]                     = field[idx3d(1, CELLS_Y - 2, 1)];
+            field[idx3d(0, CELLS_Y - 1, CELLS_X - 1)]           = field[idx3d(1, CELLS_Y - 2, CELLS_X - 2)];
+            field[idx3d(CELLS_Z - 1, 0, 0)]                     = field[idx3d(CELLS_Z - 2, 1, 1)];
+            field[idx3d(CELLS_Z - 1, 0, CELLS_X - 1)]           = field[idx3d(CELLS_Z - 2, 1, CELLS_X - 2)];
+            field[idx3d(CELLS_Z - 1, CELLS_Y - 1, 0)]           = field[idx3d(CELLS_Z - 2, CELLS_Y - 2, 1)];
+            field[idx3d(CELLS_Z - 1, CELLS_Y - 1, CELLS_X - 1)] = field[idx3d(CELLS_Z - 2, CELLS_Y - 2, CELLS_X - 2)];
         }
     }
 
@@ -145,9 +146,9 @@ namespace cuda_solver {
 
         const int index = idx3d(z, y, x);
 
-        const float relaxed = (S0[index] + a * (S1[index + 1] + S1[index - 1]
-                                                + S1[index + CELLS_X] + S1[index - CELLS_X]
-                                                + S1[index + CELLS_X * CELLS_Y] + S1[index - CELLS_X * CELLS_Y])) / b;
+        const float relaxed = (S0[index] + a * (S1[index + 1] + S1[index - 1] + S1[index + CELLS_X] + S1[index - CELLS_X] + S1[index + CELLS_X * CELLS_Y] +
+                                                S1[index - CELLS_X * CELLS_Y])) /
+                              b;
 
         S1[index] += omega * (relaxed - S1[index]);
     }
@@ -177,10 +178,8 @@ namespace cuda_solver {
         const unsigned z = blockIdx.z * blockDim.z + threadIdx.z;
 
         if (x >= 1 && x < CELLS_X - 1 && y >= 1 && y < CELLS_Y - 1 && z >= 1 && z < CELLS_Z - 1) {
-            div[idx3d(z, y, x)] =
-                (U_z[idx3d(z + 1, y, x)] - U_z[idx3d(z - 1, y, x)]) * CELLS_Z
-                + (U_y[idx3d(z, y + 1, x)] - U_y[idx3d(z, y - 1, x)]) * CELLS_Y
-                + (U_x[idx3d(z, y, x + 1)] - U_x[idx3d(z, y, x - 1)]) * CELLS_X;
+            div[idx3d(z, y, x)] = (U_z[idx3d(z + 1, y, x)] - U_z[idx3d(z - 1, y, x)]) * CELLS_Z +
+                                  (U_y[idx3d(z, y + 1, x)] - U_y[idx3d(z, y - 1, x)]) * CELLS_Y + (U_x[idx3d(z, y, x + 1)] - U_x[idx3d(z, y, x - 1)]) * CELLS_X;
 
             div[idx3d(z, y, x)] /= negate ? -2.0f : 2.0f;
         }
@@ -214,14 +213,15 @@ namespace cuda_solver {
         }
     }
 
-    __global__ void buoyancy_kernel(float *U1_z, float *U1_y, float *U1_x, const float *U0_z, const float *U0_y, const float *U0_x, float **S0, const unsigned frame) {
+    __global__ void
+    buoyancy_kernel(float *U1_z, float *U1_y, float *U1_x, const float *U0_z, const float *U0_y, const float *U0_x, float **S0, const unsigned frame) {
         const unsigned x = blockIdx.x * blockDim.x + threadIdx.x;
         const unsigned y = blockIdx.y * blockDim.y + threadIdx.y;
         const unsigned z = blockIdx.z * blockDim.z + threadIdx.z;
 
         if (x >= 1 && x < CELLS_X - 1 && y >= 1 && y < CELLS_Y - 1 && z >= 1 && z < CELLS_Z - 1) {
-            const int index = idx3d(z, y, x);
-            const float r   = 5.0f * (hash01(index * 2654435761u + frame) - 0.5f) + 1.0f;
+            const int   index = idx3d(z, y, x);
+            const float r     = 5.0f * (hash01(index * 2654435761u + frame) - 0.5f) + 1.0f;
 
             float lift = 0.0f;
             for (int i = 0; i < NUM_FLUIDS; i++)
@@ -247,9 +247,7 @@ namespace cuda_solver {
         const unsigned z   = blockIdx.z * blockDim.z + threadIdx.z;
         const unsigned tid = (threadIdx.z * blockDim.y + threadIdx.y) * blockDim.x + threadIdx.x;
 
-        partial[tid] = x >= 1 && x < CELLS_X - 1 && y >= 1 && y < CELLS_Y - 1 && z >= 1 && z < CELLS_Z - 1
-                           ? field[idx3d(z, y, x)]
-                           : 0.0f;
+        partial[tid] = x >= 1 && x < CELLS_X - 1 && y >= 1 && y < CELLS_Y - 1 && z >= 1 && z < CELLS_Z - 1 ? field[idx3d(z, y, x)] : 0.0f;
         __syncthreads();
 
         for (unsigned stride = (BLOCK_X * BLOCK_Y * BLOCK_Z) / 2; stride > 0; stride >>= 1) {
@@ -423,4 +421,4 @@ namespace cuda_solver {
 
         std::swap(S0, S1);
     }
-}
+} // namespace cuda_solver

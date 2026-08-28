@@ -7,14 +7,14 @@
 #include <iomanip>
 
 #include "vtkm/cont/DataSet.h"
-#include "vtkm/io/writer/VTKDataSetWriter.h"
 #include "vtkm/cont/DataSetBuilderUniform.h"
+#include "vtkm/io/writer/VTKDataSetWriter.h"
 
 
 typedef float                       Scalar;
 typedef Eigen::Matrix<Scalar, 3, 1> Vector;
 
-void WritePVDFile(const std::string& pvdFileName, int numTimeSteps, double timeStepLength) {
+void WritePVDFile(const std::string &pvdFileName, int numTimeSteps, double timeStepLength) {
     std::ofstream pvdFile(pvdFileName);
 
     // 写入PVD文件的头部
@@ -23,12 +23,11 @@ void WritePVDFile(const std::string& pvdFileName, int numTimeSteps, double timeS
     pvdFile << "  <Collection>\n";
 
     for (int i = 0; i < numTimeSteps; ++i) {
-        double time = i * timeStepLength;
+        double      time     = i * timeStepLength;
         std::string fileName = "velocity_" + std::to_string(i) + ".vtk";
 
         // 写入每个时间步的条目
-        pvdFile << "    <DataSet timestep=\"" << std::setprecision(5) << time
-                << "\" group=\"\" part=\"0\" file=\"" << fileName << "\"/>\n";
+        pvdFile << "    <DataSet timestep=\"" << std::setprecision(5) << time << "\" group=\"\" part=\"0\" file=\"" << fileName << "\"/>\n";
     }
 
     // 写入PVD文件的尾部

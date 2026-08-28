@@ -7,4 +7,4 @@
 
 __device__ float lin_interp(float3 pos, const float *field);
 
-#endif //UTILS_CUH
+#endif // UTILS_CUH

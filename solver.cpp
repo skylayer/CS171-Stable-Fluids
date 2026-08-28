@@ -119,14 +119,20 @@ static void set_boundary_values(float *field, int key) {
     }
 
     // corner values
-    field[idx3d(0, 0, 0)]                               = (field[idx3d(0, 1, 0)] + field[idx3d(0, 0, 1)] + field[idx3d(1, 0, 0)]) / 3.0f;
-    field[idx3d(0, 0, CELLS_X - 1)]                     = (field[idx3d(0, 1, CELLS_X - 1)] + field[idx3d(0, 0, CELLS_X - 2)] + field[idx3d(1, 0, CELLS_X - 1)]) / 3.0f;
-    field[idx3d(0, CELLS_Y - 1, 0)]                     = (field[idx3d(0, CELLS_Y - 2, 0)] + field[idx3d(0, CELLS_Y - 1, 1)] + field[idx3d(1, CELLS_Y - 1, 0)]) / 3.0f;
-    field[idx3d(0, CELLS_Y - 1, CELLS_X - 1)]           = (field[idx3d(0, CELLS_Y - 2, CELLS_X - 1)] + field[idx3d(0, CELLS_Y - 1, CELLS_X - 2)] + field[idx3d(1, CELLS_Y - 1, CELLS_X - 1)]) / 3.0f;
-    field[idx3d(CELLS_Z - 1, 0, 0)]                     = (field[idx3d(CELLS_Z - 1, 1, 0)] + field[idx3d(CELLS_Z - 1, 0, 1)] + field[idx3d(CELLS_Z - 2, 0, 0)]) / 3.0f;
-    field[idx3d(CELLS_Z - 1, 0, CELLS_X - 1)]           = (field[idx3d(CELLS_Z - 1, 1, CELLS_X - 1)] + field[idx3d(CELLS_Z - 1, 0, CELLS_X - 2)] + field[idx3d(CELLS_Z - 2, 0, CELLS_X - 1)]) / 3.0f;
-    field[idx3d(CELLS_Z - 1, CELLS_Y - 1, 0)]           = (field[idx3d(CELLS_Z - 1, CELLS_Y - 2, 0)] + field[idx3d(CELLS_Z - 1, CELLS_Y - 1, 1)] + field[idx3d(CELLS_Z - 2, CELLS_Y - 1, 0)]) / 3.0f;
-    field[idx3d(CELLS_Z - 1, CELLS_Y - 1, CELLS_X - 1)] = (field[idx3d(CELLS_Z - 1, CELLS_Y - 2, CELLS_X - 1)] + field[idx3d(CELLS_Z - 1, CELLS_Y - 1, CELLS_X - 2)] + field[idx3d(CELLS_Z - 2, CELLS_Y - 1, CELLS_X - 1)]) / 3.0f;
+    field[idx3d(0, 0, 0)]           = (field[idx3d(0, 1, 0)] + field[idx3d(0, 0, 1)] + field[idx3d(1, 0, 0)]) / 3.0f;
+    field[idx3d(0, 0, CELLS_X - 1)] = (field[idx3d(0, 1, CELLS_X - 1)] + field[idx3d(0, 0, CELLS_X - 2)] + field[idx3d(1, 0, CELLS_X - 1)]) / 3.0f;
+    field[idx3d(0, CELLS_Y - 1, 0)] = (field[idx3d(0, CELLS_Y - 2, 0)] + field[idx3d(0, CELLS_Y - 1, 1)] + field[idx3d(1, CELLS_Y - 1, 0)]) / 3.0f;
+    field[idx3d(0, CELLS_Y - 1, CELLS_X - 1)] =
+        (field[idx3d(0, CELLS_Y - 2, CELLS_X - 1)] + field[idx3d(0, CELLS_Y - 1, CELLS_X - 2)] + field[idx3d(1, CELLS_Y - 1, CELLS_X - 1)]) / 3.0f;
+    field[idx3d(CELLS_Z - 1, 0, 0)] = (field[idx3d(CELLS_Z - 1, 1, 0)] + field[idx3d(CELLS_Z - 1, 0, 1)] + field[idx3d(CELLS_Z - 2, 0, 0)]) / 3.0f;
+    field[idx3d(CELLS_Z - 1, 0, CELLS_X - 1)] =
+        (field[idx3d(CELLS_Z - 1, 1, CELLS_X - 1)] + field[idx3d(CELLS_Z - 1, 0, CELLS_X - 2)] + field[idx3d(CELLS_Z - 2, 0, CELLS_X - 1)]) / 3.0f;
+    field[idx3d(CELLS_Z - 1, CELLS_Y - 1, 0)] =
+        (field[idx3d(CELLS_Z - 1, CELLS_Y - 2, 0)] + field[idx3d(CELLS_Z - 1, CELLS_Y - 1, 1)] + field[idx3d(CELLS_Z - 2, CELLS_Y - 1, 0)]) / 3.0f;
+    field[idx3d(CELLS_Z - 1, CELLS_Y - 1, CELLS_X - 1)] =
+        (field[idx3d(CELLS_Z - 1, CELLS_Y - 2, CELLS_X - 1)] + field[idx3d(CELLS_Z - 1, CELLS_Y - 1, CELLS_X - 2)] +
+         field[idx3d(CELLS_Z - 2, CELLS_Y - 1, CELLS_X - 1)]) /
+        3.0f;
 }
 
 static float lin_interp(const float z, const float y, const float x, const float *field) {
@@ -184,7 +190,9 @@ static void lin_solve(float *S1, const float *S0, const float a, const float b, 
         for (int z = 1; z < CELLS_Z - 1; ++z) {
             for (int y = 1; y < CELLS_Y - 1; ++y) {
                 for (int x = 1; x < CELLS_X - 1; ++x) {
-                    auto new_val       = (S0[idx3d(z, y, x)] + a * (S1[idx3d(z + 1, y, x)] + S1[idx3d(z - 1, y, x)] + S1[idx3d(z, y + 1, x)] + S1[idx3d(z, y - 1, x)] + S1[idx3d(z, y, x + 1)] + S1[idx3d(z, y, x - 1)])) / b;
+                    auto new_val = (S0[idx3d(z, y, x)] + a * (S1[idx3d(z + 1, y, x)] + S1[idx3d(z - 1, y, x)] + S1[idx3d(z, y + 1, x)] +
+                                                              S1[idx3d(z, y - 1, x)] + S1[idx3d(z, y, x + 1)] + S1[idx3d(z, y, x - 1)])) /
+                                   b;
                     maxerror           = fmax(maxerror, fabs(new_val - S1[idx3d(z, y, x)]));
                     S1[idx3d(z, y, x)] = new_val;
                 }
@@ -212,7 +220,9 @@ static void project(float *U1_z, float *U1_y, float *U1_x, const float *U0_z, co
     for (int z = 1; z < CELLS_Z - 1; ++z) {
         for (int y = 1; y < CELLS_Y - 1; ++y) {
             for (int x = 1; x < CELLS_X - 1; ++x) {
-                divergence[idx3d(z, y, x)] = (U0_z[idx3d(z + 1, y, x)] - U0_z[idx3d(z - 1, y, x)]) * CELLS_Z + (U0_y[idx3d(z, y + 1, x)] - U0_y[idx3d(z, y - 1, x)]) * CELLS_Y + (U0_x[idx3d(z, y, x + 1)] - U0_x[idx3d(z, y, x - 1)]) * CELLS_X;
+                divergence[idx3d(z, y, x)] = (U0_z[idx3d(z + 1, y, x)] - U0_z[idx3d(z - 1, y, x)]) * CELLS_Z +
+                                             (U0_y[idx3d(z, y + 1, x)] - U0_y[idx3d(z, y - 1, x)]) * CELLS_Y +
+                                             (U0_x[idx3d(z, y, x + 1)] - U0_x[idx3d(z, y, x - 1)]) * CELLS_X;
                 divergence[idx3d(z, y, x)] /= 2.0f;
             }
         }
@@ -254,7 +264,6 @@ static void reflect(float *U1_z, float *U1_y, float *U1_x, const float *U0_z, co
             }
         }
     }
-
 }
 
 static void dissipate(float *S1, const float *S0) {

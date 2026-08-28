@@ -83,18 +83,10 @@ void Fluid::add_source_at(int z, int y, int x, int i, float source) {
     }
 }
 
-float Fluid::Uz_at(int z, int y, int x) {
-    return U0_z[idx3d(z, y, x)];
-}
+float Fluid::Uz_at(int z, int y, int x) { return U0_z[idx3d(z, y, x)]; }
 
-float Fluid::Uy_at(int z, int y, int x) {
-    return U0_y[idx3d(z, y, x)];
-}
+float Fluid::Uy_at(int z, int y, int x) { return U0_y[idx3d(z, y, x)]; }
 
-float Fluid::Ux_at(int z, int y, int x) {
-    return U0_x[idx3d(z, y, x)];
-}
+float Fluid::Ux_at(int z, int y, int x) { return U0_x[idx3d(z, y, x)]; }
 
-float Fluid::S_at(int z, int y, int x, int i) {
-    return S1[i][idx3d(z, y, x)];
-}
+float Fluid::S_at(int z, int y, int x, int i) { return S1[i][idx3d(z, y, x)]; }

@@ -11,6 +11,7 @@
 /* A failed cudaMalloc used to return a null pointer that the next kernel
  * dereferenced, so the first symptom was an unrelated crash somewhere down the
  * pipeline. Report where it actually happened instead. */
+// clang-format off
 #define CUDA_CHECK(call)                                                                      \
     do {                                                                                      \
         const cudaError_t err_ = (call);                                                      \
@@ -28,5 +29,6 @@
         CUDA_CHECK(cudaGetLastError());                                                       \
         CUDA_CHECK(cudaDeviceSynchronize());                                                  \
     } while (0)
+// clang-format on
 
 #endif // CUDA_CHECK_CUH
