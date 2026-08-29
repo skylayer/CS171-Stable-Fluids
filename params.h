@@ -88,6 +88,12 @@
  */
 #define VORT_EPS 2.0F
 
+/* Advected values are sampled with a clamped monotonic cubic rather than
+ * trilinearly. Costs 64 gathers per sample instead of 8; buys a large drop in
+ * numerical viscosity and in how much that viscosity depends on where the CFL
+ * happens to land. Set to 0 for the cheaper trilinear path. */
+#define CUBIC_ADVECTION 1
+
 /* Source injection */
 #define SOURCE_DENSITY 1.0F
 #define SOURCE_TEMP    1.0F

@@ -249,8 +249,16 @@ namespace cuda_solver {
         if (!in_range<S>(x, y, z))
             return;
 
-        const float3 q      = trace(ux, uy, uz, element_position<S>(x, y, z), dt);
+        const float3 q = trace(ux, uy, uz, element_position<S>(x, y, z), dt);
+
+        /* Cubic for the value, linear for the trace: the trace only has to land
+         * the departure point, and sampling the velocity cubically costs another
+         * three times 64 gathers for error that RK2 already handles. */
+#if CUBIC_ADVECTION
+        dst[idx3d(z, y, x)] = cubic_interp(array_coord<S>(q), src);
+#else
         dst[idx3d(z, y, x)] = lin_interp(array_coord<S>(q), src);
+#endif
     }
 
     /* phi^{n+1} = phi_forward + (phi^n - phi_backward) / 2
