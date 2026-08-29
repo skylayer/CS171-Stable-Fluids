@@ -1,3 +1,5 @@
+#include <algorithm>
+#include <cmath>
 #include <sstream>
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image_write.h>
@@ -93,7 +95,16 @@ int main() {
         density.reserve(WINDOW_WIDTH * WINDOW_HEIGHT * 3);
 
         for (int pixelId = 0; pixelId < WINDOW_WIDTH * WINDOW_HEIGHT * 3; pixelId++) {
-            density.emplace_back((unsigned char)(fluid.get_render_buffer()[pixelId] * 255));
+            // Same display transform the GL shader applies. The cast used to run
+            // on the raw linear value with no clamp, so anything above 1 wrapped
+            // round to black and a NaN was undefined behaviour.
+            float v = fluid.get_render_buffer()[pixelId];
+            if (!std::isfinite(v)) {
+                v = 0.0F;
+            }
+            v = 1.0F - std::exp(-v * EXPOSURE);
+            v = std::pow(std::min(std::max(v, 0.0F), 1.0F), 1.0F / DISPLAY_GAMMA);
+            density.emplace_back((unsigned char)(v * 255.0F + 0.5F));
         }
 
         stbi_write_png(("density" + fmt::to_string(i) + ".png").c_str(), WINDOW_WIDTH, WINDOW_HEIGHT, 3, density.data(), 0);

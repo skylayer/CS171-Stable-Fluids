@@ -16,13 +16,21 @@ const char *vertexShaderSource = "#version 330 core\n"
                                  "   TexCoord = aTexCoord;\n"
                                  "}\0";
 
+/* The render buffer holds linear radiance. A display expects values already
+ * through its inverse transfer function, so handing it linear data showed L^2.2
+ * instead of L -- a mid grey of 0.24 arrived at 0.04. Exposure first, so the
+ * highlights a scattering model produces roll off instead of clipping. */
 const char *fragmentShaderSource = "#version 330 core\n"
                                    "out vec4 FragColor;\n"
                                    "in vec2 TexCoord;\n"
                                    "uniform sampler2D ourTexture;\n"
+                                   "uniform float uExposure;\n"
+                                   "uniform float uGamma;\n"
                                    "void main()\n"
                                    "{\n"
-                                   "   FragColor = texture(ourTexture, TexCoord);\n"
+                                   "   vec3 hdr = texture(ourTexture, TexCoord).rgb;\n"
+                                   "   vec3 mapped = vec3(1.0) - exp(-hdr * uExposure);\n"
+                                   "   FragColor = vec4(pow(mapped, vec3(1.0 / uGamma)), 1.0);\n"
                                    "}\0";
 
 int i = 0;
@@ -111,6 +119,10 @@ int main() {
     glDeleteShader(vertexShader);
     glDeleteShader(fragmentShader);
 
+    glUseProgram(shaderProgram);
+    glUniform1f(glGetUniformLocation(shaderProgram, "uExposure"), EXPOSURE);
+    glUniform1f(glGetUniformLocation(shaderProgram, "uGamma"), DISPLAY_GAMMA);
+
     // 设置顶点数据和缓冲区，并配置顶点属性
     float vertices[] = {
         // 位置          // 纹理坐标
@@ -196,7 +208,9 @@ int main() {
         }
 
         fluid.render();
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_FLOAT, fluid.get_render_buffer());
+        // GL_RGB would quantise the float radiance to 8 bits, and volume
+        // rendering keeps most of its information in the dark end.
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB32F, width, height, 0, GL_RGB, GL_FLOAT, fluid.get_render_buffer());
 
         // 渲染
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);

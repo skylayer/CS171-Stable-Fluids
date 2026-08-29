@@ -137,6 +137,7 @@ void FluidCUDA::cleanup(void) {
     cudaFree(T0);
     cudaFree(T1);
     cuda_solver::release_scratch();
+    release_render_scratch();
     cudaFree(S0);
     cudaFree(S1);
     cudaFree(render_buffer);

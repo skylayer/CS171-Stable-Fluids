@@ -6,14 +6,51 @@
 // relevant systemwide parameters should go here
 
 /* GUI parameters */
-#define WINDOW_HEIGHT       600
-#define WINDOW_WIDTH        600
-#define WINDOW_Y            100
-#define WINDOW_X            400
-#define DISPLAY_KEY         0
-#define ADD_AMT_INIT        0.5f
-#define FORCE_SCALE         5.0f
-#define ALPHA_OPTION        32.0f
+#define WINDOW_HEIGHT 600
+#define WINDOW_WIDTH  600
+#define WINDOW_Y      100
+#define WINDOW_X      400
+#define DISPLAY_KEY   0
+#define ADD_AMT_INIT  0.5f
+#define FORCE_SCALE   5.0f
+#define ALPHA_OPTION  32.0f /* extinction per unit density per unit length */
+
+/* Volume rendering
+ *
+ * Smoke is a scattering medium, not an emitting one. What reaches the eye is
+ * light that came in from the light source, was attenuated on the way to the
+ * scattering point, scattered towards the camera, and attenuated again on the
+ * way out. The previous renderer modelled it as emission-absorption: every
+ * voxel glowed with a fixed colour regardless of where the light was, so there
+ * was no lit side, no shadowed side and no self-shadowing -- which is most of
+ * why it read as coloured fog rather than smoke.
+ *
+ * LIGHT_INTENSITY is large because the Henyey-Greenstein phase function is
+ * normalised over the sphere, so it carries a 1/4pi that the intensity has to
+ * undo; at these angles the phase value is about 0.05.
+ *
+ * LIGHT_DIR is the direction the light travels. AMBIENT_LIGHT stands in for the
+ * multiple scattering this single-scattering model does not compute; without it
+ * the shadowed side goes pure black, which real smoke never does. HG_G is the
+ * Henyey-Greenstein asymmetry -- positive means forward scattering, which is
+ * what puts a bright rim on a backlit plume.
+ */
+#define LIGHT_DIR                                                                                                                                              \
+    { -0.35f, -1.0f, -0.25f }
+#define LIGHT_COLOR                                                                                                                                            \
+    { 1.0f, 0.97f, 0.92f }
+#define LIGHT_INTENSITY 45.0f
+#define AMBIENT_LIGHT   0.08f
+#define SCATTER_ALBEDO  0.9f
+#define HG_G            0.3f
+#define RENDER_SAMPLES  1000
+
+/* Display transform. The render buffer holds linear radiance; a display expects
+ * values already through its inverse transfer function. Handing it linear data
+ * makes the shown luminance L^2.2 instead of L -- a mid grey of 0.24 arrives at
+ * 0.04. Both the GL shader and the PNG writer in main.cpp apply this. */
+#define EXPOSURE            1.5f
+#define DISPLAY_GAMMA       2.2f
 #define COLOR_SCALE         20
 #define RAINBOW_HOLD_NSTEPS 20
 
